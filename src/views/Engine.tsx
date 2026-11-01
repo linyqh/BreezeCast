@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, Cpu, Download, FolderOpen, RotateCw, Trash2, X } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { del, get, patch, post, type ModelPackage, type Settings } from "../api";
+import { backendLabel, del, get, patch, post, type ModelPackage, type Settings } from "../api";
 import { useStore } from "../store";
 import { ParamsPanel, Segmented, Spinner, Switch } from "../ui";
 
@@ -30,7 +30,7 @@ export function EngineView() {
     <>
       <div className="toolbar" data-tauri-drag-region>
         <h1>模型与引擎</h1>
-        <span className="sub">audio.cpp · ggml Metal · BreezeTTS 2 (3B)</span>
+        <span className="sub">audio.cpp · ggml {backendLabel(engine?.backend)} · BreezeTTS 2 (3B)</span>
         <div className="spacer" data-tauri-drag-region />
         <button className="btn" onClick={() => post("/engine/restart").catch(fail)}><RotateCw size={14} />重启引擎</button>
       </div>
@@ -98,7 +98,7 @@ export function EngineView() {
                 <div className="row">
                   <div className="grow">
                     <div className="title">BF16 参考精度</div>
-                    <div className="desc">与官方实现一致的 bf16 激活，发音更准、更少重复；在 Metal 上约慢 20%。“自动”在 Metal 上为关闭。</div>
+                    <div className="desc">与官方实现一致的 bf16 激活，发音更准、更少重复；在 Metal 上约慢 20%。“自动”在 Metal 上为关闭，在 Vulkan / CUDA 上为开启；CPU 推理不受此项影响。</div>
                   </div>
                   <Segmented value={settings.bf16_activations} onChange={(v) => save({ bf16_activations: v })} options={[{ value: "on", label: "开启" }, { value: "auto", label: "自动" }, { value: "off", label: "关闭" }]} />
                 </div>

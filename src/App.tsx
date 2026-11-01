@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AudioLines, Bot, Cpu, Library, Mic, Pause, Play, Sparkles, Users, Wand2, X } from "lucide-react";
-import { initApi, fmtMs } from "./api";
+import { backendLabel, initApi, fmtMs } from "./api";
 import { StoreProvider, usePlayer, useStore, type Route } from "./store";
 import { LibraryView, ShowView } from "./views/Library";
 import { EpisodeView } from "./views/Episode";
@@ -71,7 +71,7 @@ function Sidebar() {
           <span className="grow" style={{ flex: 1 }}>
             <div style={{ fontWeight: 600 }}>{ENGINE_LABEL[engine?.state ?? "stopped"]}</div>
             <div className="muted" style={{ fontSize: 11 }}>
-              BreezeTTS 2 · {status?.model.active_package.replace("breeze_tts_2_", "").toUpperCase() ?? "—"} · Metal
+              BreezeTTS 2 · {status?.model.active_package.replace("breeze_tts_2_", "").toUpperCase() ?? "—"} · {backendLabel(engine?.backend)}
             </div>
           </span>
         </button>

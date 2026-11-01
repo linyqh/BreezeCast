@@ -3,21 +3,22 @@
 BreezeCast exposes every capability of the desktop app through a local HTTP API.
 The app UI itself uses this API, so anything you can do in the UI an agent can do too.
 
-- Base URL: `http://127.0.0.1:17860` on this Mac, or `http://<LAN IP>:17860` from other devices on the
+- Base URL: `http://127.0.0.1:17860` on this machine, or `http://<LAN IP>:17860` from other devices on the
   same network (port configurable in Settings). The server listens on all interfaces as soon as the app starts.
 - Auth: none. Every endpoint is open to anyone who can reach the port — use only on trusted networks.
-- Discovery: the running app writes
-  `~/Library/Application Support/com.breezecast.studio/api.json`:
+- Discovery: the running app writes `api.json` to its data directory —
+  `~/Library/Application Support/com.breezecast.studio/api.json` on macOS,
+  `%APPDATA%\com.breezecast.studio\api.json` on Windows:
   ```json
   {"base_url":"http://127.0.0.1:17860","lan_url":"http://192.168.1.20:17860","pid":12345,"version":"0.1.0"}
   ```
 - Returned `url` fields use the host the client connected through, so they work from LAN devices too.
-  `path` fields are absolute paths on the BreezeCast Mac; remote clients should use `url` and upload
+  `path` fields are absolute paths on the BreezeCast machine; remote clients should use `url` and upload
   reference audio with `ref_audio_base64` instead of `ref_audio_path`.
 - All bodies are JSON (`Content-Type: application/json`). Errors: HTTP 4xx/5xx with
   `{"error":{"code":"…","message":"…"}}`.
 - IDs are opaque strings. Times are RFC 3339. Durations are milliseconds.
-- Files (`path` fields) are absolute paths on this Mac; agents running locally can read them directly.
+- Files (`path` fields) are absolute paths on this machine; agents running locally can read them directly.
 
 ## Model facts (BreezeTTS 2)
 

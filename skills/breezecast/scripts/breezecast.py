@@ -11,7 +11,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-DISCOVERY = os.path.expanduser("~/Library/Application Support/com.breezecast.studio/api.json")
+if sys.platform == "win32":
+    DISCOVERY = os.path.join(os.environ.get("APPDATA", ""), "com.breezecast.studio", "api.json")
+else:
+    DISCOVERY = os.path.expanduser("~/Library/Application Support/com.breezecast.studio/api.json")
 SHORT_TIMEOUT = 60
 LONG_TIMEOUT = 1800
 NOT_RUNNING = "BreezeCast is not running — open the app"
@@ -24,7 +27,7 @@ class ApiError(Exception):
 
 
 def load_base():
-    """BREEZECAST_URL (e.g. a LAN address of another Mac) wins over the local discovery file."""
+    """BREEZECAST_URL (e.g. a LAN address of another machine) wins over the local discovery file."""
     base = os.environ.get("BREEZECAST_URL")
     if not base:
         try:
@@ -33,7 +36,7 @@ def load_base():
         except (OSError, ValueError):
             base = None
     if not base:
-        raise ApiError(NOT_RUNNING + " (no discovery file at %s; set BREEZECAST_URL for a remote Mac)" % DISCOVERY, "not_running")
+        raise ApiError(NOT_RUNNING + " (no discovery file at %s; set BREEZECAST_URL for a remote machine)" % DISCOVERY, "not_running")
     return base.rstrip("/")
 
 

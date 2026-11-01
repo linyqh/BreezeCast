@@ -125,7 +125,7 @@ pub fn save_stream_clip(state: &Shared, req: &SpeechRequest, voice_id: Option<St
     Ok(clip)
 }
 
-/// Imports reference audio of any CoreAudio format as a 24 kHz mono WAV and checks its length.
+/// Imports reference audio (wav/mp3/m4a/flac/aiff/caf/ogg) as a 24 kHz mono WAV and checks its length.
 pub fn import_reference(state: &Shared, src: &Path, dest: &Path) -> Result<u64> {
     let tmp = state.paths.tmp.join(format!("{}.wav", new_id("ref")));
     audio::convert_to_wav(src, &tmp)?;
@@ -384,8 +384,7 @@ pub fn export(state: &Shared, ep: &Episode, format: &str, dir: Option<String>) -
     let base = match dir.or(state.settings().export_dir) {
         Some(d) => PathBuf::from(d),
         None => {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-            let mut p = PathBuf::from(home).join("Music").join("BreezeCast");
+            let mut p = std::env::home_dir().unwrap_or_else(std::env::temp_dir).join("Music").join("BreezeCast");
             if let Some(t) = &show_title {
                 p = p.join(sanitize(t));
             }

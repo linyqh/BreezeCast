@@ -33,7 +33,7 @@ const SKILL_DIRS: [(&str, &str); 4] = [
 ];
 
 fn home() -> std::path::PathBuf {
-    std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+    std::env::home_dir().unwrap_or_default()
 }
 
 #[tauri::command]
@@ -85,7 +85,8 @@ fn install_skill(app: tauri::AppHandle, dir: String) -> Result<String, String> {
 
 fn engine_binary() -> std::path::PathBuf {
     let exe = std::env::current_exe().unwrap_or_default();
-    exe.parent().map(|d| d.join("audiocpp_server")).unwrap_or_default()
+    let name = format!("audiocpp_server{}", std::env::consts::EXE_SUFFIX);
+    exe.parent().map(|d| d.join(name)).unwrap_or_default()
 }
 
 async fn serve_api(state: Shared, app: tauri::AppHandle) {

@@ -1,0 +1,127 @@
+name: release-windows
+
+# Windows installers are built in the cloud; macOS packages are built locally and
+# uploaded with scripts/release-macos.sh to the same GitHub Release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "上传到的 Release tag（如 v0.2.0，须与 tauri.conf.json 版本一致）；留空只生成 Actions artifact"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  VULKAN_VERSION: 1.4.357.0
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    name: Windows x64 (Vulkan + CPU)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version and tag
+        id: meta
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $tag = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "${{ inputs.tag }}" }
+          if ($tag -and $tag -ne "v$version") { throw "tag $tag 与 tauri.conf.json 的版本 $version 不一致" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Restore audio.cpp engine
+        id: engine-cache
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/binaries
+          key: engine-windows-vulkan-${{ hashFiles('scripts/audiocpp.rev', 'scripts/build-engine.ps1') }}
+
+      - name: Install Vulkan SDK
+        if: steps.engine-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          curl.exe -fsSL -o "$env:RUNNER_TEMP\VulkanSDK.exe" "https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_VERSION.exe"
+          & "$env:RUNNER_TEMP\VulkanSDK.exe" --accept-licenses --default-answer --confirm-command install
+          if ($LASTEXITCODE -ne 0) { throw "Vulkan SDK install failed" }
+          "VULKAN_SDK=C:\VulkanSDK\$env:VULKAN_VERSION" >> $env:GITHUB_ENV
+          "C:\VulkanSDK\$env:VULKAN_VERSION\Bin" >> $env:GITHUB_PATH
+
+      - name: Build audio.cpp engine
+        if: steps.engine-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./scripts/build-engine.ps1 -Backend vulkan
+
+      # M4A export uses Media Foundation, which Windows Server images may lack.
+      - name: Ensure Media Foundation
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "$env:SystemRoot\System32\mfplat.dll")) {
+            Install-WindowsFeature Server-Media-Foundation | Out-Null
+          }
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test --lib
+
+      - name: Build installer
+        run: pnpm tauri build
+
+      - name: Locate installer
+        id: bundle
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
+          if (-not $exe) { throw "NSIS installer not found" }
+          "path=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          "name=$($exe.Name)" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.bundle.outputs.name }}
+          path: ${{ steps.bundle.outputs.path }}
+          if-no-files-found: error
+
+      - name: Upload to GitHub Release
+        if: steps.meta.outputs.tag != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:TAG --draft --verify-tag --title "BreezeCast $env:TAG" --generate-notes
+            if ($LASTEXITCODE -ne 0) { gh release view $env:TAG *> $null }
+            if ($LASTEXITCODE -ne 0) { throw "cannot create release $env:TAG" }
+          }
+          gh release upload $env:TAG "${{ steps.bundle.outputs.path }}" --clobber
+          if ($LASTEXITCODE -ne 0) { throw "upload failed" }

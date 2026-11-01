@@ -1,13 +1,13 @@
 ---
 name: breezecast
-description: Use when the user wants to generate speech, make a podcast, design a new voice, or clone a voice locally on their Mac with BreezeCast + BreezeTTS 2 (Chinese/English text-to-speech, voice direction, episode rendering, m4a/srt export).
+description: Use when the user wants to generate speech, make a podcast, design a new voice, or clone a voice locally on their Mac or Windows PC with BreezeCast + BreezeTTS 2 (Chinese/English text-to-speech, voice direction, episode rendering, m4a/srt export).
 ---
 
 # BreezeCast
 
-BreezeCast is a macOS podcast studio. It exposes a REST API (no auth, reachable on the LAN); this skill drives it through `scripts/breezecast.py` (Python 3, stdlib only). All commands print JSON to stdout; errors go to stderr with a non-zero exit and the API error code. When BreezeCast runs on this Mac, `path` fields are local files you can read directly; on a remote Mac use the `url` fields.
+BreezeCast is a macOS / Windows podcast studio. It exposes a REST API (no auth, reachable on the LAN); this skill drives it through `scripts/breezecast.py` (Python 3, stdlib only). All commands print JSON to stdout; errors go to stderr with a non-zero exit and the API error code. When BreezeCast runs on this machine, `path` fields are local files you can read directly; on a remote machine use the `url` fields.
 
-Below, `BC` means `python3 <skill-dir>/scripts/breezecast.py`. Raw HTTP details: `reference/api.md`.
+Below, `BC` means `python3 <skill-dir>/scripts/breezecast.py` (on Windows usually `py` or `python` instead of `python3`). Raw HTTP details: `reference/api.md`.
 
 ## Preconditions (always check first)
 
@@ -15,7 +15,7 @@ Below, `BC` means `python3 <skill-dir>/scripts/breezecast.py`. Raw HTTP details:
 2. In the status JSON: `engine.state` must be `ready` (`starting` → wait and re-check; `error` → show `engine.message`, try `POST /engine/restart` or tell the user). `model.installed` must be non-empty.
 3. No model installed: tell the user (packages are 3.8–7.3 GB) and, with their consent, `BC models` then `BC model-download breeze_tts_2_q8_0 --wait` (default, 5.1 GB).
 
-Discovery is automatic on the same Mac (`~/Library/Application Support/com.breezecast.studio/api.json`). To drive BreezeCast on another Mac in the LAN, set `BREEZECAST_URL=http://<its LAN IP>:17860` (shown in the app under "API 与 Agent"). `BC capabilities` returns the machine-readable list of events, params, limits and script syntax.
+Discovery is automatic on the same machine (`~/Library/Application Support/com.breezecast.studio/api.json` on macOS, `%APPDATA%\com.breezecast.studio\api.json` on Windows). To drive BreezeCast on another machine in the LAN, set `BREEZECAST_URL=http://<its LAN IP>:17860` (shown in the app under "API 与 Agent"). `BC capabilities` returns the machine-readable list of events, params, limits and script syntax.
 
 ## Workflows
 
@@ -25,7 +25,7 @@ BC voices
 BC speak --text "大家好，欢迎收听本期节目。" --voice-name "Mia" --out /tmp/hello.wav
 BC speak --text-file note.txt --instruct "Speak slowly, calm tone." --guidance 4 --out /tmp/note.wav
 ```
-Omit `--voice`/`--voice-name` only for plain design-prompt speech (`--instruct`). The result is a Clip; the WAV is at `clip.url` (and `clip.path` on the BreezeCast Mac); `--out` downloads it.
+Omit `--voice`/`--voice-name` only for plain design-prompt speech (`--instruct`). The result is a Clip; the WAV is at `clip.url` (and `clip.path` on the BreezeCast machine); `--out` downloads it.
 
 ### (b) Design a voice, audition takes, save the best
 ```

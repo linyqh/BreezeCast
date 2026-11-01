@@ -6,7 +6,12 @@ VENDOR="$ROOT/vendor/audio.cpp"
 TOOLS="$ROOT/.tools"
 
 if [ ! -d "$VENDOR" ]; then
-  git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/0xShug0/audio.cpp.git "$VENDOR"
+  REV="$(tr -d '[:space:]' < "$ROOT/scripts/audiocpp.rev")"
+  git init -q "$VENDOR"
+  git -C "$VENDOR" remote add origin https://github.com/0xShug0/audio.cpp.git
+  git -C "$VENDOR" fetch -q --depth 1 origin "$REV"
+  git -C "$VENDOR" checkout -q FETCH_HEAD
+  git -C "$VENDOR" submodule update -q --init --recursive --depth 1
 fi
 if ! command -v cmake >/dev/null 2>&1; then
   [ -x "$TOOLS/bin/cmake" ] || { python3 -m venv "$TOOLS" && "$TOOLS/bin/pip" install -q cmake ninja; }

@@ -38,6 +38,11 @@ parking_lot = "0.12"
 rand = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
 if-addrs = "0.13"
+symphonia = { version = "0.6", default-features = false, features = ["aac", "alac", "flac", "mp3", "pcm", "vorbis", "adpcm", "isomp4", "caf", "aiff", "wav", "ogg", "mkv"] }
+rubato = "5"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_Media_MediaFoundation", "Win32_System_Com"] }
 
 [profile.release]
 codegen-units = 1

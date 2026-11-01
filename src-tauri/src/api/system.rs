@@ -35,7 +35,7 @@ pub async fn status(State(state): State<Shared>) -> ApiResult {
 
 pub async fn capabilities() -> ApiResult {
     ok(json!({
-        "model": "BreezeTTS 2 (3B, GGUF via audio.cpp, Metal)",
+        "model": "BreezeTTS 2 (3B, GGUF via audio.cpp)",
         "sample_rate": 24000,
         "languages": ["zh", "en"],
         "features": {

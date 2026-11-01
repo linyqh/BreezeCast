@@ -43,6 +43,7 @@ pub struct Engine {
     child: tokio::sync::Mutex<Option<Child>>,
     logs: Arc<Mutex<VecDeque<String>>>,
     http: reqwest::Client,
+    backend: tokio::sync::OnceCell<String>,
     /// audio.cpp runs one request per model; we serialize here so callers queue instead of hitting 503.
     pub busy: tokio::sync::Mutex<()>,
     on_change: Box<dyn Fn(&EngineStatus) + Send + Sync>,
@@ -54,12 +55,13 @@ impl Engine {
             status: Mutex::new(EngineStatus {
                 state: "stopped".into(),
                 message: String::new(),
-                backend: "metal".into(),
+                backend: String::new(),
                 port: 0,
             }),
             child: tokio::sync::Mutex::new(None),
             logs: Arc::new(Mutex::new(VecDeque::new())),
             http: reqwest::Client::builder().pool_idle_timeout(Duration::from_secs(30)).build().unwrap(),
+            backend: tokio::sync::OnceCell::new(),
             busy: tokio::sync::Mutex::new(()),
             on_change: Box::new(on_change),
         }
@@ -114,12 +116,14 @@ impl Engine {
             bail!("engine binary missing");
         }
         kill_stale(&cfg.work_dir);
+        let backend = self.backend.get_or_init(|| detect_backend(&cfg.binary)).await.clone();
+        self.status.lock().backend = backend.clone();
         let port = free_port()?;
         let config = json!({
             "host": "127.0.0.1",
             "port": port,
-            "backend": "metal",
-            "threads": 4,
+            "backend": backend,
+            "threads": threads_for(&backend),
             "lazy_load": !cfg.keep_model_loaded,
             "idle_unload_ms": if cfg.keep_model_loaded { 0 } else { 600_000 },
             "max_loaded_models": 1,
@@ -141,7 +145,7 @@ impl Engine {
         let config_path = cfg.work_dir.join("server.json");
         std::fs::write(&config_path, serde_json::to_vec_pretty(&config)?)?;
         self.set_status("starting", "正在加载模型…", Some(port));
-        let mut child = Command::new(&cfg.binary)
+        let mut child = engine_command(&cfg.binary)
             .arg("--config")
             .arg(&config_path)
             .arg("--log")
@@ -341,16 +345,85 @@ fn free_port() -> Result<u16> {
     Ok(std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
 }
 
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// The sidecar is a console program; on Windows it would otherwise pop up a console window.
+fn engine_command(binary: &Path) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(binary);
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
+
+/// audio.cpp has no automatic backend fallback, so pick the best device the build can see.
+async fn detect_backend(binary: &Path) -> String {
+    if cfg!(target_os = "macos") {
+        return "metal".into();
+    }
+    let probe = engine_command(binary).args(["--list-devices", "--json"]).kill_on_drop(true).output();
+    let Ok(Ok(out)) = tokio::time::timeout(Duration::from_secs(60), probe).await else {
+        return "cpu".into();
+    };
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let devices: Vec<Value> = stdout
+        .lines()
+        .rev()
+        .find_map(|l| serde_json::from_str::<Value>(l).ok())
+        .and_then(|v| v["devices"].as_array().cloned())
+        .unwrap_or_default();
+    ["cuda", "vulkan"]
+        .into_iter()
+        .find(|want| {
+            devices.iter().any(|d| d["backend"] == *want && matches!(d["type"].as_str(), Some("gpu" | "igpu")))
+        })
+        .unwrap_or("cpu")
+        .into()
+}
+
+fn threads_for(backend: &str) -> usize {
+    if backend != "cpu" {
+        return 4;
+    }
+    let logical = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+    (logical / 2).max(logical.min(4))
+}
+
 /// Kills an engine left behind by a crashed previous app instance.
 fn kill_stale(work_dir: &Path) {
     let pid_file = work_dir.join("engine.pid");
-    let Ok(pid) = std::fs::read_to_string(&pid_file) else { return };
-    let pid = pid.trim();
-    let out = std::process::Command::new("/bin/ps").args(["-p", pid, "-o", "comm="]).output();
+    if let Some(pid) = std::fs::read_to_string(&pid_file).ok().and_then(|p| p.trim().parse::<u32>().ok()) {
+        kill_if_engine(pid);
+    }
+    let _ = std::fs::remove_file(pid_file);
+}
+
+#[cfg(unix)]
+fn kill_if_engine(pid: u32) {
+    let pid = pid.to_string();
+    let out = std::process::Command::new("/bin/ps").args(["-p", &pid, "-o", "comm="]).output();
     if let Ok(o) = out
         && String::from_utf8_lossy(&o.stdout).contains("audiocpp_server")
     {
-        let _ = std::process::Command::new("/bin/kill").arg(pid).status();
+        let _ = std::process::Command::new("/bin/kill").arg(&pid).status();
     }
-    let _ = std::fs::remove_file(pid_file);
+}
+
+#[cfg(windows)]
+fn kill_if_engine(pid: u32) {
+    use std::os::windows::process::CommandExt;
+    let filter = format!("PID eq {pid}");
+    let out = std::process::Command::new("tasklist")
+        .args(["/FI", &filter, "/FO", "CSV", "/NH"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+    if let Ok(o) = out
+        && String::from_utf8_lossy(&o.stdout).contains("audiocpp_server")
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/F"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status();
+    }
 }

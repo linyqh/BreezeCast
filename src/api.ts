@@ -95,6 +95,8 @@ export type Episode = {
   updated_at: string;
 };
 export type EngineStatus = { state: "stopped" | "starting" | "ready" | "error" | "no_model"; message: string; backend: string; port: number };
+const BACKEND_LABELS: Record<string, string> = { metal: "Metal", vulkan: "Vulkan", cuda: "CUDA", cpu: "CPU" };
+export const backendLabel = (b?: string) => (b ? BACKEND_LABELS[b] ?? b.toUpperCase() : "—");
 export type Status = {
   app_version: string;
   api: { base_url: string; lan_url: string | null; port: number };
