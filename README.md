@@ -1,22 +1,164 @@
+<div align="center">
+
+<img src="src-tauri/icons/icon.png" width="128" alt="BreezeCast" />
+
 # BreezeCast
 
-本地运行的 AI 播客工作室：Tauri 2 桌面客户端 + [audio.cpp](https://github.com/0xShug0/audio.cpp)（ggml / Metal）+ [BreezeTTS 2](https://huggingface.co/BreezeBlue/Breeze-TTS-2)。界面按 macOS 原生风格设计（悬浮玻璃侧边栏、系统强调色、浅色/深色模式），所有能力同时通过 REST API（本机和局域网）开放给 AI Agent，并附带配套 Skill。
+**完全在本机运行的 AI 播客工作室**
 
-## 功能
+写一份多角色脚本，用 [BreezeTTS 2](https://huggingface.co/BreezeBlue/Breeze-TTS-2) 生成整期播客：设计声音、克隆声音、逐句指导演绎，最后导出带字幕和章节的音频。
 
-| 模块 | BreezeTTS 2 能力 |
+![platform](https://img.shields.io/badge/platform-macOS%2014%2B-black?logo=apple)
+![arch](https://img.shields.io/badge/Apple%20Silicon-Metal-0a84ff)
+![tauri](https://img.shields.io/badge/Tauri-2-24c8db?logo=tauri)
+![version](https://img.shields.io/badge/version-0.1.0-blue)
+![license](https://img.shields.io/badge/code-MIT-green)
+![model license](https://img.shields.io/badge/model-non--commercial-orange)
+
+[功能](#-功能) · [快速开始](#-快速开始) · [使用指南](#-使用指南) · [API 与 Agent](#-api-与-agent) · [架构](#-架构) · [许可](#-许可)
+
+</div>
+
+---
+
+## BreezeCast 是什么
+
+BreezeCast 是一个 macOS 桌面应用，把开源语音模型 BreezeTTS 2 包装成一套完整的播客制作工具：
+
+- **离线运行**：模型通过 [audio.cpp](https://github.com/0xShug0/audio.cpp)（ggml + Metal）在你的 Mac 上推理，文本和声音不会上传到任何服务器。
+- **面向整期节目**：不只是“输入一句话、得到一段音频”。你可以管理节目和单集，用脚本编排多位主持人的对话，单独修改某一句并只重新生成这一句，最后自动混音导出。
+- **为 AI Agent 设计**：界面的每一项功能都通过本地 REST API 开放。Claude Code、Codex 等 Agent 安装配套 Skill 后，可以直接替你写稿、选声音、生成和导出播客。
+
+适合想做中文/英文播客、有声内容、配音样片，或者想让 AI Agent 自动产出音频内容的个人创作者和开发者。
+
+## 📸 截图
+
+<p align="center">
+  <img src="docs/screenshots/library.png" width="49%" alt="节目库" />
+  <img src="docs/screenshots/episode-editor.png" width="49%" alt="单集编辑器" />
+</p>
+<p align="center"><sub>左：节目库，管理节目和单集　·　右：单集编辑器，逐句编辑台词、角色和演绎指导</sub></p>
+
+## ✨ 功能
+
+| 模块 | 能做什么 |
 |---|---|
-| 节目 / 单集编辑器 | 用脚本写多角色对谈；逐句编辑台词、演绎指导（Voice Direction）、停顿和声音事件；逐句换条或锁定种子；只重新生成改动过的句子；自动响度统一并混音；导出 M4A/WAV、SRT 字幕、章节 JSON 和文稿 |
-| 即时朗读 | 实时流式播放（M5 上首包约 0.2–1 秒）或整段生成；支持全部采样参数；历史里任意一条都能存为声音 |
-| 声音设计 | 用文字描述创造声音（Voice Design）；用属性标签组合描述；一次生成多个候选，把最满意的保存下来作为固定音色 |
-| 声音克隆 | 跟读录音（逐字稿自动填入）或导入 WAV/MP3/M4A/AIFF/FLAC；保存前可以先试听克隆效果；有授权确认 |
-| 声音库 | 参考音频、默认指导、声音级参数；可以输入一句指导直接试听 |
-| 模型与引擎 | Q4_0 / Q4_K / Q8_0 / BF16 四种 GGUF 一键下载（支持断点续传、SHA-256 校验）和切换；Metal BF16 参考精度开关；常驻内存设置；全局默认参数；引擎日志 |
-| API 与 Agent | REST API，启动即开启，无需鉴权，局域网内其他设备可直接访问；自动发现文件；一键把 Skill 安装到 Claude Code / Codex / oh-my-pi |
+| **节目 / 单集编辑器** | 用脚本写多角色对谈；逐句编辑台词、演绎指导、停顿和声音事件；逐句换一条或锁定随机种子；只重新生成改动过的句子；自动响度统一并混音；导出 M4A / WAV、SRT 字幕、章节 JSON 和文稿 |
+| **即时朗读** | 实时流式播放（M5 芯片上首包约 0.2–1 秒）或整段生成；可调全部采样参数；历史里任意一条都能存为声音 |
+| **声音设计** | 用一段文字描述创造全新的声音，或用属性标签组合描述；一次生成多个候选，挑最满意的保存为固定音色 |
+| **声音克隆** | 跟读录音（逐字稿自动填入）或导入 WAV / MP3 / M4A / AIFF / FLAC；保存前先试听克隆效果；需确认已获本人授权 |
+| **声音库** | 管理参考音频、默认演绎指导和声音级参数；输入一句指导即可试听 |
+| **模型与引擎** | Q4_0 / Q4_K / Q8_0 / BF16 四种精度一键下载（断点续传、SHA-256 校验）和切换；Metal BF16 参考精度开关；常驻内存设置；引擎日志 |
+| **API 与 Agent** | 启动即开启的 REST API，局域网内其他设备可直接调用；自动发现文件；一键把 Skill 安装到 Claude Code / Codex / oh-my-pi |
 
-声音事件：中文 `[笑] [叹气] [咳嗽] [清嗓子]`，英文 `(laugh) (sigh) (cough) (clears throat)`。
+支持的声音事件：中文 `[笑]` `[叹气]` `[咳嗽]` `[清嗓子]`，英文 `(laugh)` `(sigh)` `(cough)` `(clears throat)`。支持中英文混合文本。
 
-## 架构
+## 💻 系统要求
+
+| 项目 | 要求 |
+|---|---|
+| 系统 | macOS 14 Sonoma 或更高；macOS 26+ 会显示 Liquid Glass 风格图标 |
+| 芯片 | Apple Silicon（M1 及以后），推理使用 Metal |
+| 内存 | 建议 16 GB 及以上（Q8_0 模型加载后约占 3.7 GB） |
+| 磁盘 | 每个模型 3.8–7.3 GB，见下表 |
+
+| 模型 | 大小 | 说明 |
+|---|---|---|
+| Q4_0 | 3.8 GB | 体积最小 |
+| Q4_K | 4.5 GB | 体积和质量的折中 |
+| **Q8_0** | **5.1 GB** | **默认推荐** |
+| BF16 | 7.3 GB | 参考精度 |
+
+Windows 版本尚未提供，目前只支持 macOS。
+
+## 🚀 快速开始
+
+目前还没有发布预编译安装包，需要从源码构建。
+
+**1. 准备环境**
+
+需要 [Rust](https://rustup.rs)、Node.js 22+、[pnpm](https://pnpm.io) 和 Xcode Command Line Tools。没有 cmake 时，构建脚本会自动在 `.tools/` 下安装一份。
+
+**2. 构建并运行**
+
+```bash
+git clone https://github.com/linyqh/BreezeCast.git
+cd BreezeCast
+pnpm install
+scripts/build-engine.sh        # 编译 audio.cpp 推理引擎（Metal，只含 breeze_tts）
+pnpm tauri dev                 # 开发模式运行
+```
+
+打包成 `.app` 和 `.dmg`：
+
+```bash
+pnpm tauri build               # 产物位于 src-tauri/target/release/bundle/
+```
+
+**3. 下载模型**
+
+第一次启动后，进入侧边栏的“模型与引擎”，下载一个模型（推荐 Q8_0）。下载完成、引擎显示“引擎就绪”后即可使用。
+
+## 📖 使用指南
+
+### 用脚本写一期节目
+
+在“节目”里新建单集，粘贴类似下面的脚本：
+
+```text
+# 第 1 期：声音的故事
+主持人: [笑] 欢迎收听《声波漫谈》。
+嘉宾 {轻声，带点犹豫}: 嗯……其实我一开始也不太确定。
+<pause 1.5s>
+Host {excited, fast}: (laugh) That's amazing!
+```
+
+| 语法 | 含义 |
+|---|---|
+| `角色: 台词` | 一句台词，冒号可用 `:` 或 `：` |
+| `角色 {指导}: 台词` | 给这一句单独加演绎指导（语气、情绪、语速） |
+| `<pause 1.5s>` / `<pause 800ms>` | 单独一行，在上一句之后插入静音 |
+| 没有角色前缀的行 | 接着上一位角色继续说 |
+| `# 标题` | 井号加空格开头的行是标题或注释，不会朗读 |
+
+然后为每个角色分配声音库里的音色，点击生成。之后修改任意一句，只会重新生成这一句。
+
+### 创造或克隆一个声音
+
+- **声音设计**：写一段描述，例如“一位声音温暖、语速偏慢的中年男性电台主持人”，生成几个候选后保存最满意的那个。
+- **声音克隆**：录一段 3–20 秒的清晰人声，或导入音频文件并提供准确的逐字稿。克隆他人声音前必须取得本人授权。
+
+## 🤖 API 与 Agent
+
+BreezeCast 的界面本身就是通过本地 REST API 工作的，所以 Agent 能做到界面能做的一切。
+
+- 本机地址：`http://127.0.0.1:17860`（端口可在应用内修改）；局域网地址显示在“API 与 Agent”页。
+- 运行中的应用会写入 `~/Library/Application Support/com.breezecast.studio/api.json`，本机的 Agent 可以自动找到它。
+- 完整接口文档见 [docs/API.md](docs/API.md)；运行时也可以访问 `GET /api/v1/capabilities` 获取机器可读的能力说明。
+
+### 安装 Skill
+
+在应用的“API 与 Agent”页点击“安装”，或者运行：
+
+```bash
+scripts/install-skills.sh              # 为 Claude Code / Codex / oh-my-pi 创建软链接
+scripts/install-skills.sh --uninstall  # 移除
+```
+
+Skill 位于 [skills/breezecast](skills/breezecast/SKILL.md)，自带一个零依赖的 Python 命令行工具：
+
+```bash
+BC="python3 skills/breezecast/scripts/breezecast.py"
+$BC status
+$BC episode-create --title "第 1 期" --script-file ep.txt --cast '主持人=老周'
+$BC render e_xxx --wait
+$BC export e_xxx --format m4a
+```
+
+> [!WARNING]
+> API 不做鉴权，并且监听所有网卡：同一局域网内的任何人都能调用全部接口，包括删除数据和导出文件到任意目录。请只在可信网络中运行 BreezeCast。
+
+## 🏗 架构
 
 ```mermaid
 flowchart LR
@@ -31,39 +173,35 @@ flowchart LR
   AC --> GGUF[(BreezeTTS 2 GGUF)]
 ```
 
-- 界面只通过 REST API 工作，所以 Agent 能做到界面能做的一切。
-- 引擎是一个 `streaming` 会话，同时处理流式和整段请求，模型只占一份内存（Q8_0 在 Metal 上约 3.7 GB）。
-- 数据目录：`~/Library/Application Support/com.breezecast.studio/`（模型、声音、片段、单集、SQLite、`api.json`）。
-- API 不做鉴权、监听所有网卡：同一局域网内任何人都能调用全部接口（包括删除和导出到任意目录），请只在可信网络中运行。
+- **前端**：React + TypeScript + Vite，运行在 Tauri 的 WKWebView 中，界面按 macOS 原生风格设计（悬浮玻璃侧边栏、系统强调色、浅色/深色模式）。
+- **后端**：Rust（Tauri 2 + axum），负责 API、渲染队列、音频拼接混音和导出，数据存在 SQLite。
+- **推理引擎**：audio.cpp 编译的 `audiocpp_server`，作为 sidecar 子进程运行。一个 streaming 会话同时处理流式和整段请求，模型只占一份内存。
+- **数据目录**：`~/Library/Application Support/com.breezecast.studio/`，包括模型、声音、片段、单集、SQLite 数据库和 `api.json`。
 
-## 开发
+### 目录结构
 
-需要 Rust、Node 22+、pnpm 和 Xcode Command Line Tools。没有 cmake 时，构建脚本会在 `.tools/` 下自动装一份。
-
-```bash
-pnpm install
-scripts/build-engine.sh        # 编译 audio.cpp（Metal，只含 breeze_tts）并放到 src-tauri/binaries/
-pnpm tauri dev
-pnpm tauri build               # 生成 .app 和 .dmg，位于 src-tauri/target/release/bundle/
+```text
+src/                 React 前端
+src-tauri/           Rust 后端与 Tauri 配置
+  icons/             应用图标（macOS .icon / .icns，Windows .ico）
+skills/breezecast/   Agent Skill 与命令行工具
+scripts/             引擎构建、图标编译、Skill 安装脚本
+docs/API.md          REST API 文档
 ```
 
-应用图标：macOS 26+ 用 `src-tauri/icons/AppIcon.icon`（Liquid Glass）预编译成的 `Assets.car`，更早的 macOS 用 `icon.icns`，Windows 用 `icon.ico` 和 `Square*Logo.png`。改了 `AppIcon.icon` 后运行 `scripts/build-icon.sh` 重新生成 `Assets.car`。
+### 应用图标
 
-第一次启动时到“模型与引擎”下载模型（推荐 Q8_0，5.1 GB）。
+macOS 26+ 使用由 `src-tauri/icons/AppIcon.icon`（Liquid Glass）预编译的 `Assets.car`，更早的 macOS 使用 `icon.icns`，Windows 使用 `icon.ico` 和 `Square*Logo.png`。修改 `AppIcon.icon` 后运行 `scripts/build-icon.sh` 重新生成 `Assets.car`。
 
-## API 与 Skill
+## 📄 许可
 
-- 接口文档：[docs/API.md](docs/API.md)，运行时也可以访问 `GET /api/v1/capabilities`
-- Skill：[skills/breezecast](skills/breezecast/SKILL.md)，包含一个零依赖的命令行工具 `scripts/breezecast.py`
-- 安装 Skill：在 App 的“API 与 Agent”页点“安装”，或者运行 `scripts/install-skills.sh`（创建软链接，`--uninstall` 可移除）
+- **模型与生成的音频**：BreezeTTS 2 的模型权重以及用它在本地生成的所有音频，都受 [BreezeBlue Research and Non-Commercial License](https://huggingface.co/BreezeBlue/Breeze-TTS-2/blob/main/LICENSE) 约束，**仅限研究和非商业用途**。
+- **第三方代码**：推理引擎 [audio.cpp](https://github.com/0xShug0/audio.cpp) 使用 Apache-2.0 许可。
+- **本项目代码**：[MIT License](LICENSE)。
+- **声音克隆**：克隆他人声音前必须取得本人授权，请勿用于冒充、欺诈或其他违法用途。
 
-```bash
-python3 skills/breezecast/scripts/breezecast.py status
-python3 skills/breezecast/scripts/breezecast.py episode-create --title "第 1 期" --script-file ep.txt --cast '主持人=老周'
-python3 skills/breezecast/scripts/breezecast.py render e_xxx --wait
-python3 skills/breezecast/scripts/breezecast.py export e_xxx --format m4a
-```
+## 🙏 致谢
 
-## 许可
-
-代码依赖：audio.cpp（Apache-2.0）。BreezeTTS 2 的模型权重及本地生成的音频受 [BreezeBlue Research and Non-Commercial License](https://huggingface.co/BreezeBlue/Breeze-TTS-2/blob/main/LICENSE) 约束，只能用于研究和非商业用途。克隆他人声音前必须取得本人授权。
+- [BreezeTTS 2](https://huggingface.co/BreezeBlue/Breeze-TTS-2)：BreezeBlue 发布的中英双语语音模型
+- [audio.cpp](https://github.com/0xShug0/audio.cpp)：基于 ggml 的本地音频模型推理
+- [Tauri](https://tauri.app)：跨平台桌面应用框架
