@@ -47,6 +47,8 @@ pnpm tauri dev
 pnpm tauri build               # 生成 .app 和 .dmg，位于 src-tauri/target/release/bundle/
 ```
 
+应用图标：macOS 26+ 用 `src-tauri/icons/AppIcon.icon`（Liquid Glass）预编译成的 `Assets.car`，更早的 macOS 用 `icon.icns`，Windows 用 `icon.ico` 和 `Square*Logo.png`。改了 `AppIcon.icon` 后运行 `scripts/build-icon.sh` 重新生成 `Assets.car`。
+
 第一次启动时到“模型与引擎”下载模型（推荐 Q8_0，5.1 GB）。
 
 ## API 与 Skill

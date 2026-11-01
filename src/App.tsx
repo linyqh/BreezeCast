@@ -47,6 +47,12 @@ function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="drag" data-tauri-drag-region />
+      <div className="brand" data-tauri-drag-region>
+        <div className="brand-name" data-tauri-drag-region>
+          Breeze<b>Cast</b>
+        </div>
+        <div className="brand-tag" data-tauri-drag-region>本地 AI 播客工作室</div>
+      </div>
       {NAV.map((g) => (
         <div key={g.section}>
           <div className="side-section">{g.section}</div>
