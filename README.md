@@ -73,7 +73,7 @@ Windows 上导出 M4A 依赖系统自带的 Media Foundation；Windows N / KN �
 
 ## 🚀 快速开始
 
-预编译安装包在 [Releases](https://github.com/linyqh/BreezeCast/releases)：macOS 下载 `.dmg`，Windows 下载 `*-setup.exe`。安装包未签名，首次打开时 macOS 需在“隐私与安全性”里允许，Windows SmartScreen 需点“更多信息 → 仍要运行”。
+预编译安装包在 [Releases](https://github.com/linyqh/BreezeCast/releases)：macOS 下载 `.dmg`（已签名并公证），Windows 下载 `*-setup.exe`（未签名，SmartScreen 拦截时点“更多信息 → 仍要运行”）。
 
 下面是从源码构建的步骤。
 
