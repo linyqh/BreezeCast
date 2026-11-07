@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AudioLines, Bot, Cpu, Library, Mic, Pause, Play, Sparkles, Users, Wand2, X } from "lucide-react";
-import { backendLabel, initApi, fmtMs } from "./api";
+import { backendLabel, initApi, fmtMs, localized } from "./api";
 import { StoreProvider, usePlayer, useStore, type Route } from "./store";
 import { LibraryView, ShowView } from "./views/Library";
 import { EpisodeView } from "./views/Episode";
@@ -156,7 +156,7 @@ function EngineBanner() {
     <div className="card" style={{ margin: "0 26px 10px", padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
       {starting ? <Spinner /> : <Sparkles size={16} color="var(--orange)" />}
       <div style={{ flex: 1 }} className="small">
-        {starting ? t("app.banner.starting") : engine.state === "no_model" ? t("app.banner.noModel") : t("app.banner.unavailable", { message: engine.message.split("\n")[0] })}
+        {starting ? t("app.banner.starting") : engine.state === "no_model" ? t("app.banner.noModel") : t("app.banner.unavailable", { message: localized(engine).split("\n")[0] })}
       </div>
       {!starting && (
         <button className="btn sm primary" onClick={() => go({ name: "engine" })}>

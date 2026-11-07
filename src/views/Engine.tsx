@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Cpu, Download, FolderOpen, RotateCw, Trash2, X } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { backendLabel, del, get, jobMessage, patch, post, type ModelPackage, type Settings } from "../api";
+import { backendLabel, del, get, jobMessage, localized, patch, post, type ModelPackage, type Settings } from "../api";
 import { useStore } from "../store";
 import { ParamsPanel, Segmented, Spinner, Switch } from "../ui";
 
@@ -49,7 +49,7 @@ export function EngineView() {
                 {engine?.state === "starting" && <Spinner />}
               </div>
               <div className="muted small">
-                {engine?.state === "ready" ? t("engine.readyDetail", { port: engine.port, backend: engine.backend.toUpperCase(), model: status?.model.active_package }) : engine?.state === "error" ? engine.message : t("common.none")}
+                {engine?.state === "ready" ? t("engine.readyDetail", { port: engine.port, backend: engine.backend.toUpperCase(), model: status?.model.active_package }) : engine?.state === "error" ? localized(engine) : t("common.none")}
               </div>
             </div>
             <button className="btn sm" onClick={async () => setLogs(logs ? null : (await get<{ lines: string[] }>("/engine/logs?lines=300")).lines)}>{logs ? t("engine.hideLogs") : t("engine.showLogs")}</button>

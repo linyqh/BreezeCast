@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { get, mediaUrl, subscribe, type Chapter, type EngineStatus, type Episode, type Job, type Show, type Status, type Voice } from "./api";
+import { errorText, get, mediaUrl, subscribe, type Chapter, type EngineStatus, type Episode, type Job, type Show, type Status, type Voice } from "./api";
 
 export type Route =
   | { name: "library" }
@@ -56,7 +56,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setToasts((t) => [...t, { id, text, error }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), error ? 6000 : 2800);
   }, []);
-  const fail = useCallback((e: unknown) => toast(e instanceof Error ? e.message : String(e), true), [toast]);
+  const fail = useCallback((e: unknown) => toast(errorText(e), true), [toast]);
 
   const loadVoices = useCallback(() => get<Voice[]>("/voices").then(setVoices), []);
   const loadShows = useCallback(() => get<Show[]>("/shows").then(setShows), []);

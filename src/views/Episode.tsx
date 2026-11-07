@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { ArrowDown, ArrowUp, Download, FileText, Lock, MoreHorizontal, Play, Plus, RefreshCw, Settings2, Sparkles, Square, Trash2, Unlock, Wand2 } from "lucide-react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { del, get, isZh, jobMessage, patch, post, type Episode, type Line, type Params, type Voice } from "../api";
+import { del, get, isZh, jobMessage, localized, patch, post, type Episode, type Line, type Params, type Voice } from "../api";
 import { DIRECTION_PRESETS } from "../i18n/content";
 import { usePlayer, useStore } from "../store";
 import { Avatar, Duration, EventChips, ParamsPanel, PlayButton, Sheet, Spinner, coverStyle } from "../ui";
@@ -170,7 +170,7 @@ export function EpisodeView({ id }: { id: string }) {
               <div className="progress"><div style={{ width: `${job.progress * 100}%` }} /></div>
             </div>
           )}
-          {ep.failed && !job && <div className="card pad err" style={{ marginBottom: 14 }}>{t("episode.lastFailed", { error: ep.failed })}</div>}
+          {ep.failed && !job && <div className="card pad err" style={{ marginBottom: 14 }}>{t("episode.lastFailed", { error: localized({ message: ep.failed, message_key: ep.failed_key, message_args: ep.failed_args }) })}</div>}
 
           <div className="label" style={{ marginBottom: 8 }}>{t("episode.cast.title")}</div>
           <div className="cast" style={{ marginBottom: 22 }}>

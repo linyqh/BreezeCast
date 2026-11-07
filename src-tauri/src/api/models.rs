@@ -1,8 +1,8 @@
-use super::{ApiError, ApiResult, ok};
+use super::{ApiResult, ok};
+use crate::errors::{self, AppError};
 use crate::packages::{self, DownloadProgress};
 use crate::state::Shared;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
 use serde_json::json;
 
 pub async fn list(State(state): State<Shared>) -> ApiResult {
@@ -25,9 +25,9 @@ pub async fn list(State(state): State<Shared>) -> ApiResult {
 }
 
 pub async fn download(State(state): State<Shared>, Path(id): Path<String>) -> ApiResult {
-    let pkg = packages::find(&id).ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "未知模型包"))?;
+    let pkg = packages::find(&id).ok_or_else(|| errors::not_found("package_unknown", json!({"id": id}), "未知模型包"))?;
     if pkg.path(&state.paths.models).exists() {
-        return Err(ApiError::new(StatusCode::CONFLICT, "conflict", "该模型包已安装"));
+        return Err(AppError::new("conflict", "model_installed", json!({}), "该模型包已安装").into());
     }
     if let Some(job) = state.active_job_for(&id) {
         return ok(job);
@@ -77,9 +77,9 @@ pub async fn download(State(state): State<Shared>, Path(id): Path<String>) -> Ap
 }
 
 pub async fn activate(State(state): State<Shared>, Path(id): Path<String>) -> ApiResult {
-    let pkg = packages::find(&id).ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "未知模型包"))?;
+    let pkg = packages::find(&id).ok_or_else(|| errors::not_found("package_unknown", json!({"id": id}), "未知模型包"))?;
     if !pkg.path(&state.paths.models).exists() {
-        return Err(ApiError::bad("该模型包尚未下载"));
+        return Err(errors::invalid("model_not_downloaded", json!({}), "该模型包尚未下载").into());
     }
     let mut s = state.settings();
     s.active_package = id;
@@ -90,7 +90,7 @@ pub async fn activate(State(state): State<Shared>, Path(id): Path<String>) -> Ap
 }
 
 pub async fn delete(State(state): State<Shared>, Path(id): Path<String>) -> ApiResult {
-    let pkg = packages::find(&id).ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "未知模型包"))?;
+    let pkg = packages::find(&id).ok_or_else(|| errors::not_found("package_unknown", json!({"id": id}), "未知模型包"))?;
     let active = state.settings().active_package == id;
     if active {
         state.engine.stop().await;

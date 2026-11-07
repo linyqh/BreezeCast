@@ -1,11 +1,11 @@
 use super::{ApiError, ApiResult, base_url, ok, serve_file};
 use crate::engine::SpeechRequest;
+use crate::errors;
 use crate::service::{self as svc, build_request};
 use crate::state::Shared;
 use crate::types::*;
 use axum::Json;
 use axum::extract::{Path, Query, Request, State};
-use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use base64::Engine as _;
@@ -37,14 +37,14 @@ fn take_reference(state: &Shared, b64: Option<&str>, path: Option<&str>, dest: &
         let data = b.split_once("base64,").map(|(_, d)| d).unwrap_or(b);
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(data.trim())
-            .map_err(|_| ApiError::bad("ref_audio_base64 不是有效的 base64"))?;
+            .map_err(|_| errors::invalid("ref_audio_base64_invalid", json!({}), "ref_audio_base64 不是有效的 base64"))?;
         let tmp = state.paths.tmp.join(new_id("upload"));
         std::fs::write(&tmp, bytes).map_err(anyhow::Error::from)?;
         tmp
     } else if let Some(p) = path {
         let p = PathBuf::from(p);
         if !p.is_absolute() || !p.exists() {
-            return Err(ApiError::bad("ref_audio_path 必须是存在的绝对路径"));
+            return Err(errors::invalid("ref_audio_path_invalid", json!({}), "ref_audio_path 必须是存在的绝对路径").into());
         }
         p
     } else {
@@ -81,12 +81,12 @@ fn resolve_speech(state: &Shared, b: &SpeechBody) -> Result<SpeechRequest, ApiEr
     let mut req = build_request(&b.text, voice.as_ref(), &b.instruct, &[&defaults, voice.as_ref().map(|v| &v.params).unwrap_or(&empty), &b.params]);
     let ref_tmp = state.paths.tmp.join(format!("{}.wav", new_id("ref")));
     if take_reference(state, b.ref_audio_base64.as_deref(), b.ref_audio_path.as_deref(), &ref_tmp)? {
-        let text = b.ref_text.clone().filter(|t| !t.trim().is_empty()).ok_or_else(|| ApiError::bad("使用参考音频时必须提供 ref_text（参考音频的逐字稿）"))?;
+        let text = b.ref_text.clone().filter(|t| !t.trim().is_empty()).ok_or_else(|| errors::invalid("ref_text_required", json!({}), "使用参考音频时必须提供 ref_text（参考音频的逐字稿）"))?;
         req.ref_path = Some(ref_tmp.to_string_lossy().into());
         req.ref_text = Some(text);
         req.instruct = b.instruct.clone();
     }
-    req.params.validate().map_err(ApiError::bad)?;
+    req.params.validate()?;
     Ok(req)
 }
 
@@ -98,7 +98,7 @@ pub async fn speech(State(state): State<Shared>, Json(b): Json<SpeechBody>) -> A
 
 pub async fn speech_stream(State(state): State<Shared>, Json(b): Json<SpeechBody>) -> Result<Response, ApiError> {
     if b.text.trim().is_empty() {
-        return Err(ApiError::bad("text 不能为空"));
+        return Err(errors::invalid("text_required", json!({}), "text 不能为空").into());
     }
     let mut req = resolve_speech(&state, &b)?;
     req.params.seed.get_or_insert_with(svc::random_seed);
@@ -110,7 +110,7 @@ pub async fn speech_stream(State(state): State<Shared>, Json(b): Json<SpeechBody
         let mut pcm: Vec<i16> = Vec::new();
         let ev = |v: Value| Ok::<Event, std::convert::Infallible>(Event::default().data(v.to_string()));
         match state.engine.stream(&req).await {
-            Err(e) => yield ev(json!({"type": "error", "message": format!("{e:#}")})),
+            Err(e) => yield ev(error_event(&e)),
             Ok(s) => {
                 futures::pin_mut!(s);
                 let mut failed = false;
@@ -124,7 +124,7 @@ pub async fn speech_stream(State(state): State<Shared>, Json(b): Json<SpeechBody
                         }
                         Err(e) => {
                             failed = true;
-                            yield ev(json!({"type": "error", "message": format!("{e:#}")}));
+                            yield ev(error_event(&e));
                             break;
                         }
                     }
@@ -136,7 +136,7 @@ pub async fn speech_stream(State(state): State<Shared>, Json(b): Json<SpeechBody
                             v["url"] = json!(format!("{origin}/api/v1/clips/{}/audio", clip.id));
                             yield ev(json!({"type": "done", "clip": v}));
                         }
-                        Err(e) => yield ev(json!({"type": "error", "message": format!("{e:#}")})),
+                        Err(e) => yield ev(error_event(&e)),
                     }
                 }
             }
@@ -152,8 +152,18 @@ pub async fn list_clips(State(state): State<Shared>, Query(q): Query<HashMap<Str
     ok(clips.iter().filter(|c| kind.is_none_or(|k| &c.kind == k)).map(|c| clip_json(&state, c)).collect::<Vec<_>>())
 }
 
+/// SSE `error` event: `message` is the API text, `message_key`/`message_args` let UIs localise it.
+fn error_event(e: &anyhow::Error) -> Value {
+    let mut v = json!({"type": "error", "message": format!("{e:#}")});
+    if let (Some(key), Some(args)) = errors::i18n_fields(e) {
+        v["message_key"] = json!(key);
+        v["message_args"] = args;
+    }
+    v
+}
+
 fn clip(state: &Shared, id: &str) -> Result<Clip, ApiError> {
-    state.db.get::<Clip>("clips", id)?.ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "片段不存在"))
+    state.db.get::<Clip>("clips", id)?.ok_or_else(|| errors::not_found("clip_not_found", json!({"id": id}), "片段不存在").into())
 }
 
 pub async fn get_clip(State(state): State<Shared>, Path(id): Path<String>) -> ApiResult {
@@ -197,7 +207,7 @@ fn one() -> usize {
 
 pub async fn audition(State(state): State<Shared>, Json(b): Json<AuditionBody>) -> ApiResult {
     if b.instruct.trim().is_empty() {
-        return Err(ApiError::bad("instruct（声音描述）不能为空"));
+        return Err(errors::invalid("instruct_required", json!({}), "instruct（声音描述）不能为空").into());
     }
     let count = b.count.clamp(1, 6);
     let defaults = state.settings().default_params;
@@ -233,9 +243,9 @@ const COLORS: [&str; 8] = ["#0A84FF", "#BF5AF2", "#FF9F0A", "#30D158", "#FF375F"
 
 pub async fn create_voice(State(state): State<Shared>, Json(b): Json<VoiceBody>) -> ApiResult {
     if b.name.trim().is_empty() {
-        return Err(ApiError::bad("name 不能为空"));
+        return Err(errors::invalid("name_required", json!({}), "name 不能为空").into());
     }
-    b.params.validate().map_err(ApiError::bad)?;
+    b.params.validate()?;
     let id = new_id("v");
     let dest = state.paths.voices.join(format!("{id}.wav"));
     let (source, ref_path, ref_text) = if let Some(cid) = &b.from_clip_id {
@@ -245,12 +255,12 @@ pub async fn create_voice(State(state): State<Shared>, Json(b): Json<VoiceBody>)
     } else if take_reference(&state, b.ref_audio_base64.as_deref(), b.ref_audio_path.as_deref(), &dest)? {
         let text = b.ref_text.clone().filter(|t| !t.trim().is_empty()).ok_or_else(|| {
             let _ = std::fs::remove_file(&dest);
-            ApiError::bad("克隆声音需要 ref_text（参考音频的逐字稿）")
+            ApiError::from(errors::invalid("ref_text_required_clone", json!({}), "克隆声音需要 ref_text（参考音频的逐字稿）"))
         })?;
         (b.source.clone().unwrap_or_else(|| "clone".into()), Some(dest), Some(text))
     } else {
         if b.instruct.trim().is_empty() {
-            return Err(ApiError::bad("需要 from_clip_id、参考音频或 instruct 之一"));
+            return Err(errors::invalid("voice_source_required", json!({}), "需要 from_clip_id、参考音频或 instruct 之一").into());
         }
         ("design".to_string(), None, None)
     };
@@ -302,7 +312,7 @@ pub async fn patch_voice(State(state): State<Shared>, Path(id): Path<String>, Js
         v.ref_text = Some(x);
     }
     if let Some(x) = p.params {
-        x.validate().map_err(ApiError::bad)?;
+        x.validate()?;
         v.params = x;
     }
     if let Some(x) = p.color {
@@ -329,7 +339,7 @@ pub async fn delete_voice(State(state): State<Shared>, Path(id): Path<String>) -
 
 pub async fn voice_audio(State(state): State<Shared>, Path(id): Path<String>, req: Request) -> ApiResult<Response> {
     let v = svc::voice(&state, &id)?;
-    let p = v.ref_path.ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "该声音没有参考音频"))?;
+    let p = v.ref_path.ok_or_else(|| errors::not_found("voice_no_reference", json!({}), "该声音没有参考音频"))?;
     serve_file(p.into(), req).await
 }
 

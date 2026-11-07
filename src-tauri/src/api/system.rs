@@ -1,4 +1,5 @@
-use super::{ApiError, ApiResult, ok};
+use super::{ApiResult, ok};
+use crate::errors;
 use crate::service as svc;
 use crate::state::Shared;
 use crate::types::*;
@@ -90,25 +91,25 @@ pub async fn patch_settings(State(state): State<Shared>, Json(p): Json<SettingsP
     let old = state.settings();
     let mut s = old.clone();
     if let Some(v) = p.active_package {
-        let pkg = crate::packages::find(&v).ok_or_else(|| ApiError::bad("未知模型包"))?;
+        let pkg = crate::packages::find(&v).ok_or_else(|| errors::invalid("package_unknown", serde_json::json!({"id": v}), "未知模型包"))?;
         if !pkg.path(&state.paths.models).exists() {
-            return Err(ApiError::bad("该模型包尚未下载"));
+            return Err(errors::invalid("model_not_downloaded", serde_json::json!({}), "该模型包尚未下载").into());
         }
         s.active_package = v;
     }
     if let Some(v) = p.bf16_activations {
         if !["auto", "on", "off"].contains(&v.as_str()) {
-            return Err(ApiError::bad("bf16_activations 只能是 auto / on / off"));
+            return Err(errors::invalid("bf16_invalid", serde_json::json!({}), "bf16_activations 只能是 auto / on / off").into());
         }
         s.bf16_activations = v;
     }
     if let Some(v) = p.default_params {
-        v.validate().map_err(ApiError::bad)?;
+        v.validate()?;
         s.default_params = v;
     }
     if let Some(v) = p.api_port {
         if v < 1024 {
-            return Err(ApiError::bad("端口需 >= 1024"));
+            return Err(errors::invalid("port_invalid", serde_json::json!({}), "端口需 >= 1024").into());
         }
         s.api_port = v;
     }

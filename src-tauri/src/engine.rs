@@ -1,5 +1,6 @@
+use crate::errors::AppError;
 use crate::types::Params;
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow};
 use futures::{Stream, StreamExt};
 use parking_lot::Mutex;
 use serde::Serialize;
@@ -17,6 +18,9 @@ pub const MODEL_ID: &str = "breeze";
 pub struct EngineStatus {
     pub state: String,
     pub message: String,
+    /// i18n key (`engine.status.*`) + args for `message`; `None` for state-only statuses.
+    pub message_key: Option<String>,
+    pub message_args: Option<Value>,
     pub backend: String,
     pub port: u16,
 }
@@ -55,6 +59,8 @@ impl Engine {
             status: Mutex::new(EngineStatus {
                 state: "stopped".into(),
                 message: String::new(),
+                message_key: None,
+                message_args: None,
                 backend: String::new(),
                 port: 0,
             }),
@@ -72,10 +78,23 @@ impl Engine {
     }
 
     fn set_status(&self, state: &str, message: impl Into<String>, port: Option<u16>) {
+        self.apply_status(state, message.into(), None, port);
+    }
+
+    /// Status whose message the UI can localise through `engine.status.<key>`.
+    fn set_status_keyed(&self, state: &str, key: &str, args: Value, message: impl Into<String>, port: Option<u16>) {
+        self.apply_status(state, message.into(), Some((format!("engine.status.{key}"), args)), port);
+    }
+
+    fn apply_status(&self, state: &str, message: String, key: Option<(String, Value)>, port: Option<u16>) {
         let snapshot = {
             let mut s = self.status.lock();
             s.state = state.into();
-            s.message = message.into();
+            s.message = message;
+            (s.message_key, s.message_args) = match key {
+                Some((k, a)) => (Some(k), Some(a)),
+                None => (None, None),
+            };
             if let Some(p) = port {
                 s.port = p;
             }
@@ -108,12 +127,12 @@ impl Engine {
     pub async fn start(self: &Arc<Self>, cfg: EngineConfig) -> Result<()> {
         self.stop().await;
         let Some(model_path) = cfg.model_path.filter(|p| p.exists()) else {
-            self.set_status("no_model", "尚未安装 BreezeTTS 2 模型", Some(0));
+            self.set_status_keyed("no_model", "no_model", json!({}), "尚未安装 BreezeTTS 2 模型", Some(0));
             return Ok(());
         };
         if !cfg.binary.exists() {
-            self.set_status("error", format!("找不到推理引擎 {}", cfg.binary.display()), Some(0));
-            bail!("engine binary missing");
+            self.set_status_keyed("error", "binary_missing", json!({"path": cfg.binary.display().to_string()}), format!("找不到推理引擎 {}", cfg.binary.display()), Some(0));
+            return Err(anyhow!("engine binary missing"));
         }
         kill_stale(&cfg.work_dir);
         let backend = self.backend.get_or_init(|| detect_backend(&cfg.binary)).await.clone();
@@ -144,7 +163,7 @@ impl Engine {
         std::fs::create_dir_all(&cfg.work_dir)?;
         let config_path = cfg.work_dir.join("server.json");
         std::fs::write(&config_path, serde_json::to_vec_pretty(&config)?)?;
-        self.set_status("starting", "正在加载模型…", Some(port));
+        self.set_status_keyed("starting", "loading", json!({}), "正在加载模型…", Some(port));
         let mut child = engine_command(&cfg.binary)
             .arg("--config")
             .arg(&config_path)
@@ -184,7 +203,7 @@ impl Engine {
                 }
                 if let Some(code) = me.exited().await {
                     let tail = me.logs(6).join("\n");
-                    me.set_status("error", format!("引擎退出（{code}）\n{tail}"), None);
+                    me.set_status_keyed("error", "exited", json!({"code": code, "tail": tail}), format!("引擎退出（{code}）\n{tail}"), None);
                     return;
                 }
                 if let Ok(r) = me.http.get(&url).timeout(Duration::from_secs(2)).send().await
@@ -195,7 +214,7 @@ impl Engine {
                     return;
                 }
             }
-            me.set_status("error", "引擎启动超时", None);
+            me.set_status_keyed("error", "start_timeout", json!({}), "引擎启动超时", None);
         });
         Ok(())
     }
@@ -216,7 +235,7 @@ impl Engine {
             }
             if let Some(code) = self.exited().await {
                 let tail = self.logs(6).join("\n");
-                self.set_status("error", format!("引擎意外退出（{code}）\n{tail}"), None);
+                self.set_status_keyed("error", "exited_unexpectedly", json!({"code": code, "tail": tail}), format!("引擎意外退出（{code}）\n{tail}"), None);
                 return;
             }
         }
@@ -225,11 +244,12 @@ impl Engine {
     fn base(&self) -> Result<String> {
         let s = self.status();
         if s.state != "ready" {
-            return Err(anyhow!(match s.state.as_str() {
-                "no_model" => "engine_no_model: 尚未安装模型，请先在“模型与引擎”中下载".to_string(),
-                "starting" => "engine_starting: 引擎正在加载模型，请稍候".to_string(),
-                _ => format!("engine_unavailable: 引擎未就绪（{}）", s.state),
-            }));
+            return Err(match s.state.as_str() {
+                "no_model" => AppError::new("engine_no_model", "engine_no_model", json!({}), "尚未安装模型，请先在“模型与引擎”中下载"),
+                "starting" => AppError::new("engine_starting", "engine_starting", json!({}), "引擎正在加载模型，请稍候"),
+                _ => AppError::new("engine_unavailable", "engine_not_ready", json!({"state": s.state}), format!("引擎未就绪（{}）", s.state)),
+            }
+            .into());
         }
         Ok(format!("http://127.0.0.1:{}", s.port))
     }
@@ -282,7 +302,7 @@ impl Engine {
             .ok()
             .and_then(|v| v["error"]["message"].as_str().map(String::from).or_else(|| v["error"].as_str().map(String::from)))
             .unwrap_or(text);
-        anyhow!("engine_error: 引擎返回 {code}: {msg}")
+        AppError::new("engine_error", "engine_response", json!({"status": code.to_string(), "detail": msg}), format!("引擎返回 {code}: {msg}")).into()
     }
 
     /// Returns WAV bytes. Caller must hold `busy`.
@@ -293,7 +313,7 @@ impl Engine {
             .json(&Self::body(req, false))
             .send()
             .await
-            .context("engine_unavailable: 无法连接推理引擎")?;
+            .map_err(connect_error)?;
         if !resp.status().is_success() {
             return Err(Self::error_of(resp).await);
         }
@@ -309,7 +329,7 @@ impl Engine {
             .json(&Self::body(req, true))
             .send()
             .await
-            .context("engine_unavailable: 无法连接推理引擎")?;
+            .map_err(connect_error)?;
         if !resp.status().is_success() {
             return Err(Self::error_of(resp).await);
         }
@@ -330,7 +350,8 @@ impl Engine {
                                 if let Some(a) = v["audio"].as_str() { yield a.to_string(); }
                             }
                             Some("error") | Some("speech.error") => {
-                                Err(anyhow!("engine_error: {}", v["error"]["message"].as_str().or(v["message"].as_str()).unwrap_or("stream failed")))?;
+                                let detail = v["error"]["message"].as_str().or(v["message"].as_str()).unwrap_or("stream failed").to_string();
+                                Err(anyhow::Error::new(AppError::new("engine_error", "engine_stream", json!({"detail": detail}), detail.clone())))?;
                             }
                             _ => {}
                         }
@@ -339,6 +360,10 @@ impl Engine {
             }
         })
     }
+}
+
+fn connect_error(e: reqwest::Error) -> AppError {
+    AppError::new("engine_unavailable", "engine_connect_failed", json!({"detail": e.to_string()}), format!("无法连接推理引擎: {e}"))
 }
 
 fn free_port() -> Result<u16> {

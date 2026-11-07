@@ -1,11 +1,12 @@
 use super::{ApiError, ApiResult, base_url, ok, serve_file};
+use crate::errors::{self, AppError};
 use crate::script;
 use crate::service as svc;
 use crate::state::{RenderTask, Shared};
 use crate::types::*;
 use axum::Json;
 use axum::extract::{Path, Query, Request, State};
-use axum::http::{StatusCode, header};
+use axum::http::header;
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -13,7 +14,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 fn show(state: &Shared, id: &str) -> Result<Show, ApiError> {
-    state.db.get::<Show>("shows", id)?.ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "节目不存在"))
+    state.db.get::<Show>("shows", id)?.ok_or_else(|| errors::not_found("show_not_found", json!({"id": id}), "节目不存在").into())
 }
 
 fn show_json(state: &Shared, s: &Show, episodes: &[Episode]) -> Value {
@@ -72,7 +73,7 @@ pub struct ShowBody {
 }
 
 pub async fn create_show(State(state): State<Shared>, Json(b): Json<ShowBody>) -> ApiResult {
-    let title = b.title.filter(|t| !t.trim().is_empty()).ok_or_else(|| ApiError::bad("title 不能为空"))?;
+    let title = b.title.filter(|t| !t.trim().is_empty()).ok_or_else(|| errors::invalid("title_required", json!({}), "title 不能为空"))?;
     let s = Show {
         id: new_id("s"),
         title: title.trim().into(),
@@ -151,7 +152,7 @@ fn build_lines(inputs: Vec<LineInput>, old: &[Line]) -> Result<Vec<Line>, ApiErr
         .into_iter()
         .map(|i| {
             if let Some(p) = &i.params {
-                p.validate().map_err(ApiError::bad)?;
+                p.validate()?;
             }
             let by_id = i.id.as_ref().and_then(|id| old.iter().position(|l| &l.id == id));
             let by_content = || {
@@ -201,7 +202,7 @@ fn complete_cast(state: &Shared, ep: &mut Episode) -> Result<(), ApiError> {
     }
     for c in &ep.cast {
         if !voices.iter().any(|v| v.id == c.voice_id) {
-            return Err(ApiError::bad(format!("角色“{}”指定的声音 {} 不存在", c.speaker, c.voice_id)));
+            return Err(errors::invalid("cast_voice_unknown", json!({"speaker": c.speaker, "voice_id": c.voice_id}), format!("角色“{}”指定的声音 {} 不存在", c.speaker, c.voice_id)).into());
         }
     }
     Ok(())
@@ -246,7 +247,7 @@ fn apply_episode(state: &Shared, ep: &mut Episode, b: EpisodeBody) -> Result<(),
         ep.language = v;
     }
     if let Some(v) = b.params {
-        v.validate().map_err(ApiError::bad)?;
+        v.validate()?;
         ep.params = v;
     }
     if let Some(v) = b.cast {
@@ -276,6 +277,8 @@ pub async fn create_episode(State(state): State<Shared>, Json(b): Json<EpisodeBo
         params: Params::default(),
         audio: None,
         failed: None,
+        failed_key: None,
+        failed_args: None,
         created_at: now(),
         updated_at: now(),
     };
@@ -342,7 +345,7 @@ pub struct LinePatch {
 
 pub async fn patch_line(State(state): State<Shared>, Path((id, line_id)): Path<(String, String)>, Json(p): Json<LinePatch>) -> ApiResult {
     let mut ep = svc::episode(&state, &id)?;
-    let idx = ep.lines.iter().position(|l| l.id == line_id).ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "台词不存在"))?;
+    let idx = ep.lines.iter().position(|l| l.id == line_id).ok_or_else(|| errors::not_found("line_not_found", json!({}), "台词不存在"))?;
     {
         let l = &mut ep.lines[idx];
         if let Some(v) = p.speaker.filter(|s| !s.trim().is_empty()) {
@@ -360,8 +363,8 @@ pub async fn patch_line(State(state): State<Shared>, Path((id, line_id)): Path<(
         match p.params {
             Some(Value::Null) => l.params = None,
             Some(v) => {
-                let params: Params = serde_json::from_value(v).map_err(|e| ApiError::bad(e.to_string()))?;
-                params.validate().map_err(ApiError::bad)?;
+                let params: Params = serde_json::from_value(v).map_err(|e| errors::invalid("invalid_params", json!({"detail": e.to_string()}), e.to_string()))?;
+                params.validate()?;
                 l.params = Some(params);
             }
             None => {}
@@ -402,7 +405,7 @@ pub async fn render_line(
 ) -> ApiResult {
     let b = body.map(|Json(b)| b).unwrap_or_default();
     let ep = svc::episode(&state, &id)?;
-    let mut line = ep.lines.iter().find(|l| l.id == line_id).cloned().ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "台词不存在"))?;
+    let mut line = ep.lines.iter().find(|l| l.id == line_id).cloned().ok_or_else(|| errors::not_found("line_not_found", json!({}), "台词不存在"))?;
     let original = line.clone();
     let force = b.params.seed.is_none();
     if b.params != Params::default() {
@@ -424,7 +427,7 @@ pub async fn line_audio(State(state): State<Shared>, Path((id, line_id)): Path<(
         .iter()
         .find(|l| l.id == line_id)
         .and_then(|l| l.audio.clone())
-        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "该台词尚未生成"))?;
+        .ok_or_else(|| errors::not_found("line_not_rendered", json!({}), "该台词尚未生成"))?;
     serve_file(a.path.into(), req).await
 }
 
@@ -441,7 +444,7 @@ pub async fn render(State(state): State<Shared>, Path(id): Path<String>, body: O
     let b = body.map(|Json(b)| b).unwrap_or_default();
     let ep = svc::episode(&state, &id)?;
     if ep.lines.is_empty() {
-        return Err(ApiError::bad("单集没有台词"));
+        return Err(errors::invalid("episode_empty", json!({}), "单集没有台词").into());
     }
     for l in &ep.lines {
         svc::line_request(&state, &ep, l)?;
@@ -453,7 +456,7 @@ pub async fn render(State(state): State<Shared>, Path(id): Path<String>, body: O
             state
                 .render_tx
                 .send(RenderTask { job_id: job.id.clone(), episode_id: id.clone(), line_ids: b.line_ids, force: b.force })
-                .map_err(|_| ApiError::from(anyhow::anyhow!("internal: 渲染队列不可用")))?;
+                .map_err(|_| ApiError::from(AppError::new("internal", "render_queue_unavailable", json!({}), "渲染队列不可用")))?;
             job
         }
     };
@@ -471,7 +474,7 @@ pub async fn render(State(state): State<Shared>, Path(id): Path<String>, body: O
 
 pub async fn episode_audio(State(state): State<Shared>, Path(id): Path<String>, req: Request) -> ApiResult<Response> {
     let ep = svc::episode(&state, &id)?;
-    let a = ep.audio.ok_or_else(|| ApiError::new(StatusCode::CONFLICT, "not_rendered", "单集尚未渲染"))?;
+    let a = ep.audio.ok_or_else(|| AppError::new("not_rendered", "episode_not_rendered", json!({}), "单集尚未渲染"))?;
     serve_file(a.path.into(), req).await
 }
 
@@ -508,11 +511,11 @@ pub async fn list_jobs(State(state): State<Shared>, Query(q): Query<HashMap<Stri
 }
 
 pub async fn get_job(State(state): State<Shared>, Path(id): Path<String>) -> ApiResult {
-    ok(state.job(&id).ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "任务不存在"))?)
+    ok(state.job(&id).ok_or_else(|| errors::not_found("job_not_found", json!({}), "任务不存在"))?)
 }
 
 pub async fn cancel_job(State(state): State<Shared>, Path(id): Path<String>) -> ApiResult {
-    let job = state.job(&id).ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "任务不存在"))?;
+    let job = state.job(&id).ok_or_else(|| errors::not_found("job_not_found", json!({}), "任务不存在"))?;
     state.cancel_flag(&id).set();
     if job.status == "queued" {
         state.update_job(&id, |j| {

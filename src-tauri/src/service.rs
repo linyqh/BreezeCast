@@ -1,8 +1,9 @@
 use crate::audio;
 use crate::engine::SpeechRequest;
+use crate::errors::{self, AppError};
 use crate::state::{RenderTask, Shared};
 use crate::types::*;
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -24,11 +25,11 @@ pub fn random_seed() -> u64 {
 }
 
 pub fn voice(state: &Shared, id: &str) -> Result<Voice> {
-    state.db.get::<Voice>("voices", id)?.ok_or_else(|| anyhow!("not_found: 声音 {id} 不存在"))
+    state.db.get::<Voice>("voices", id)?.ok_or_else(|| errors::not_found("voice_not_found", json!({"id": id}), format!("声音 {id} 不存在")).into())
 }
 
 pub fn episode(state: &Shared, id: &str) -> Result<Episode> {
-    state.db.get::<Episode>("episodes", id)?.ok_or_else(|| anyhow!("not_found: 单集 {id} 不存在"))
+    state.db.get::<Episode>("episodes", id)?.ok_or_else(|| errors::not_found("episode_not_found", json!({"id": id}), format!("单集 {id} 不存在")).into())
 }
 
 pub fn save_episode(state: &Shared, ep: &mut Episode) -> Result<()> {
@@ -81,9 +82,9 @@ pub async fn synthesize_to(state: &Shared, req: &SpeechRequest, out: &Path) -> R
 
 pub async fn speak(state: &Shared, mut req: SpeechRequest, voice_id: Option<String>, kind: &str) -> Result<Clip> {
     if req.text.trim().is_empty() {
-        bail!("invalid_request: text 不能为空");
+        return Err(errors::invalid("text_required", json!({}), "text 不能为空").into());
     }
-    req.params.validate().map_err(|e| anyhow!("invalid_request: {e}"))?;
+    req.params.validate()?;
     let seed = *req.params.seed.get_or_insert_with(random_seed);
     let id = new_id("c");
     let path = state.paths.clips.join(format!("{id}.wav"));
@@ -132,7 +133,7 @@ pub fn import_reference(state: &Shared, src: &Path, dest: &Path) -> Result<u64> 
     let ms = audio::duration_ms(&tmp)?;
     if ms < 2_000 || ms > 40_000 {
         let _ = std::fs::remove_file(&tmp);
-        bail!("invalid_audio: 参考音频时长为 {:.1} 秒，请使用 3–20 秒的干净人声", ms as f64 / 1000.0);
+        return Err(AppError::new("invalid_audio", "ref_audio_duration", json!({"seconds": format!("{:.1}", ms as f64 / 1000.0)}), format!("参考音频时长为 {:.1} 秒，请使用 3–20 秒的干净人声", ms as f64 / 1000.0)).into());
     }
     std::fs::rename(&tmp, dest)?;
     Ok(ms)
@@ -148,7 +149,7 @@ pub fn cast_voice(state: &Shared, ep: &Episode, speaker: &str) -> Option<Voice> 
 pub fn line_request(state: &Shared, ep: &Episode, line: &Line) -> Result<(SpeechRequest, Option<Voice>)> {
     let voice = cast_voice(state, ep, &line.speaker);
     if voice.is_none() {
-        bail!("cast_missing: 角色“{}”还没有分配声音", line.speaker);
+        return Err(AppError::new("cast_missing", "cast_missing", json!({"speaker": line.speaker}), format!("角色“{}”还没有分配声音", line.speaker)).into());
     }
     let defaults = state.settings().default_params;
     let empty = Params::default();
@@ -184,7 +185,8 @@ fn line_dir(state: &Shared, ep_id: &str) -> PathBuf {
 pub async fn render_line(state: &Shared, ep: &Episode, line: &Line, force: bool) -> Result<LineAudio> {
     let (mut req, voice) = line_request(state, ep, line)?;
     if req.text.is_empty() {
-        bail!("invalid_request: 第 {} 行没有文本", ep.lines.iter().position(|l| l.id == line.id).unwrap_or(0) + 1);
+        let n = ep.lines.iter().position(|l| l.id == line.id).unwrap_or(0) + 1;
+        return Err(errors::invalid("line_text_empty", json!({"line": n}), format!("第 {n} 行没有文本")).into());
     }
     let hash = request_hash(state, &req, voice.as_ref());
     if req.params.seed.is_none() && !force
@@ -248,11 +250,11 @@ pub fn stitch_episode(state: &Shared, ep: &mut Episode) -> Result<()> {
             l.audio
                 .as_ref()
                 .map(|a| audio::Segment { path: Path::new(&a.path), pause_ms: l.pause_ms })
-                .ok_or_else(|| anyhow!("render_incomplete: 还有未生成的台词"))
+                .ok_or_else(|| AppError::new("render_incomplete", "render_incomplete_lines", json!({}), "还有未生成的台词").into())
         })
         .collect::<Result<_>>()?;
     if segs.is_empty() {
-        bail!("invalid_request: 单集没有台词");
+        return Err(errors::invalid("episode_empty", json!({}), "单集没有台词").into());
     }
     let (samples, spans) = audio::stitch(&segs)?;
     let path = state.paths.episodes.join(&ep.id).join("episode.wav");
@@ -312,12 +314,14 @@ pub async fn run_render(state: Shared, task: RenderTask) {
         });
         let mut ep = episode(&state, &episode_id)?;
         if ep.lines.iter().any(|l| line_is_stale(&state, &ep, l)) && line_ids.is_none() {
-            bail!("render_incomplete: 渲染过程中台词被修改，请重新渲染");
+            return Err(AppError::new("render_incomplete", "render_changed", json!({}), "渲染过程中台词被修改，请重新渲染").into());
         }
         if ep.lines.iter().all(|l| l.audio.is_some()) {
             stitch_episode(&state, &mut ep)?;
         }
         ep.failed = None;
+        ep.failed_key = None;
+        ep.failed_args = None;
         save_episode(&state, &mut ep)?;
         Ok(ep)
     }
@@ -335,7 +339,10 @@ pub async fn run_render(state: Shared, task: RenderTask) {
             let msg = format!("{e:#}");
             let cancelled = msg == "cancelled";
             if !cancelled && let Ok(mut ep) = episode(&state, &episode_id) {
+                let (key, args) = errors::i18n_fields(&e);
                 ep.failed = Some(msg.clone());
+                ep.failed_key = key.map(|k| k.to_string());
+                ep.failed_args = args;
                 let _ = save_episode(&state, &mut ep);
             }
             state.update_job(&job_id, |j| {
@@ -354,7 +361,7 @@ fn ms_srt(ms: u64) -> String {
 }
 
 pub fn transcript(ep: &Episode, format: &str) -> Result<String> {
-    let a = ep.audio.as_ref().ok_or_else(|| anyhow!("not_rendered: 单集尚未渲染"))?;
+    let a = ep.audio.as_ref().ok_or_else(|| AppError::new("not_rendered", "episode_not_rendered", json!({}), "单集尚未渲染"))?;
     Ok(match format {
         "srt" => a
             .chapters
@@ -375,7 +382,7 @@ fn sanitize(name: &str) -> String {
 }
 
 pub fn export(state: &Shared, ep: &Episode, format: &str, dir: Option<String>) -> Result<serde_json::Value> {
-    let a = ep.audio.as_ref().ok_or_else(|| anyhow!("not_rendered: 单集尚未渲染"))?;
+    let a = ep.audio.as_ref().ok_or_else(|| AppError::new("not_rendered", "episode_not_rendered", json!({}), "单集尚未渲染"))?;
     let show_title = ep
         .show_id
         .as_ref()
@@ -405,7 +412,7 @@ pub fn export(state: &Shared, ep: &Episode, format: &str, dir: Option<String>) -
             audio::encode_m4a(Path::new(&a.path), &p)?;
             p
         }
-        other => bail!("invalid_request: 不支持的格式 {other}（可选 m4a / wav）"),
+        other => return Err(errors::invalid("export_format_unsupported", json!({"format": other}), format!("不支持的格式 {other}（可选 m4a / wav）")).into()),
     };
     let srt = base.join(format!("{stem}.srt"));
     std::fs::write(&srt, transcript(ep, "srt")?)?;
