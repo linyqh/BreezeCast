@@ -1,7 +1,7 @@
 {
   "name": "breezecast",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.2",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
@@ -14,9 +14,11 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.8.4",
     "@tauri-apps/plugin-opener": "^2",
+    "i18next": "^26.7.2",
     "lucide-react": "^1.66.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-i18next": "^17.1.13"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

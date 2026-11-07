@@ -10,13 +10,16 @@ The app UI itself uses this API, so anything you can do in the UI an agent can d
   `~/Library/Application Support/com.breezecast.studio/api.json` on macOS,
   `%APPDATA%\com.breezecast.studio\api.json` on Windows:
   ```json
-  {"base_url":"http://127.0.0.1:17860","lan_url":"http://192.168.1.20:17860","pid":12345,"version":"0.1.0"}
+  {"base_url":"http://127.0.0.1:17860","lan_url":"http://192.168.1.20:17860","pid":12345,"version":"0.1.2"}
   ```
 - Returned `url` fields use the host the client connected through, so they work from LAN devices too.
   `path` fields are absolute paths on the BreezeCast machine; remote clients should use `url` and upload
   reference audio with `ref_audio_base64` instead of `ref_audio_path`.
 - All bodies are JSON (`Content-Type: application/json`). Errors: HTTP 4xx/5xx with
-  `{"error":{"code":"…","message":"…"}}`.
+  `{"error":{"code":"…","message":"…"}}`. `code` and `message` (default-language text) are the stable contract.
+  Errors may also carry `message_key` (e.g. `"error.cast_missing"`) and `message_args` (e.g. `{"speaker":"A"}`),
+  which UIs use to show a translation; clients can ignore them. The same pair appears on SSE `error` events,
+  `engine` status (`message_key` under `engine.status.*`) and `Episode.failed_key` / `failed_args`.
 - IDs are opaque strings. Times are RFC 3339. Durations are milliseconds.
 - Files (`path` fields) are absolute paths on this machine; agents running locally can read them directly.
 
@@ -95,6 +98,8 @@ Job = {
   id, kind: "render_episode" | "model_download" | "audition",
   target_id: string, status: "queued" | "running" | "succeeded" | "failed" | "cancelled",
   progress: number /*0..1*/, message: string, error: string | null,
+  message_key: string | null,  // stable i18n key (e.g. "job.generating") …
+  message_args: object | null, // … and its interpolation args; `message` stays the default-language text
   result: any | null, created_at, updated_at
 }
 ```
@@ -137,7 +142,7 @@ becomes the instruction (Voice Direction). Without reference audio the instructi
   ```
   → `Clip` (audio at `clip.path` / `clip.url`).
 - `POST /api/v1/speech/stream` — same body; responds `text/event-stream`:
-  `{"type":"audio","sample_rate":24000,"pcm16_base64":"…"}` … then `{"type":"done","clip":Clip}` or `{"type":"error","message":…}`.
+  `{"type":"audio","sample_rate":24000,"pcm16_base64":"…"}` … then `{"type":"done","clip":Clip}` or `{"type":"error","message":…,"message_key"?:…,"message_args"?:…}`.
 - `GET /api/v1/clips?limit=50` → `[Clip]`; `GET /api/v1/clips/{id}`; `DELETE /api/v1/clips/{id}`
 - `GET /api/v1/clips/{id}/audio` → `audio/wav`
 

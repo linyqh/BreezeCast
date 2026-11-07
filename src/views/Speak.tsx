@@ -1,20 +1,21 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { AudioLines, Copy, Square, Trash2, UserPlus, Zap } from "lucide-react";
 import { del, get, isZh, post, streamSpeech, type Clip, type Params } from "../api";
 import { PcmStreamPlayer } from "../audio";
+import { defaultContentLang, sampleText } from "../i18n";
 import { usePlayer, useStore } from "../store";
 import { Duration, EventChips, ParamsPanel, PlayButton, Segmented, Sheet, Spinner, VoiceSelect } from "../ui";
 
-const SAMPLE = "[笑] 欢迎来到今晚的节目。今天我们聊一个有点烧脑、但又特别有意思的话题：声音，到底是怎么被“设计”出来的？";
-
 export function SaveClipAsVoice({ clip, onClose, defaultInstruct = "" }: { clip: Clip; onClose: () => void; defaultInstruct?: string }) {
+  const { t } = useTranslation();
   const { fail, toast, go } = useStore();
   const [name, setName] = useState("");
   const [instruct, setInstruct] = useState(defaultInstruct || clip.instruct);
   const save = async () => {
     try {
       await post("/voices", { name, instruct, description: clip.instruct, from_clip_id: clip.id, language: isZh(clip.text) ? "zh" : "en" });
-      toast(`已保存声音“${name}”`);
+      toast(t("speak.save.saved", { name }));
       onClose();
       go({ name: "voices" });
     } catch (e) {
@@ -23,24 +24,24 @@ export function SaveClipAsVoice({ clip, onClose, defaultInstruct = "" }: { clip:
   };
   return (
     <Sheet
-      title="保存为声音"
-      subtitle="这条音频会作为参考样本，之后用它生成的每一句都保持同一个嗓音。"
+      title={t("speak.save.title")}
+      subtitle={t("speak.save.subtitle")}
       onClose={onClose}
       actions={
         <>
-          <button className="btn" onClick={onClose}>取消</button>
-          <button className="btn primary" disabled={!name.trim()} onClick={save}>保存</button>
+          <button className="btn" onClick={onClose}>{t("common.cancel")}</button>
+          <button className="btn primary" disabled={!name.trim()} onClick={save}>{t("common.save")}</button>
         </>
       }
     >
       <div className="vstack">
         <div className="field">
-          <label>名称（也是脚本里的角色名）</label>
-          <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="例如：主持人 / 老周" />
+          <label>{t("speak.save.name")}</label>
+          <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t("speak.save.namePlaceholder")} />
         </div>
         <div className="field">
-          <label>默认演绎指导（可选）</label>
-          <input className="input" value={instruct} onChange={(e) => setInstruct(e.target.value)} placeholder="没有单句指导时使用" />
+          <label>{t("speak.save.instruct")}</label>
+          <input className="input" value={instruct} onChange={(e) => setInstruct(e.target.value)} placeholder={t("speak.save.instructPlaceholder")} />
         </div>
       </div>
     </Sheet>
@@ -48,11 +49,12 @@ export function SaveClipAsVoice({ clip, onClose, defaultInstruct = "" }: { clip:
 }
 
 export function SpeakView() {
+  const { t } = useTranslation();
   const { voices, fail, engine } = useStore();
   const player = usePlayer();
-  const [text, setText] = useState(SAMPLE);
+  const [text, setText] = useState(() => sampleText("speakText", defaultContentLang()));
   const [voiceId, setVoiceId] = useState<string | null>(null);
-  const [instruct, setInstruct] = useState("一位语气亲切、表达清晰的年轻女主播，语速适中。");
+  const [instruct, setInstruct] = useState(() => t("speak.defaultInstruct", { lng: defaultContentLang() === "zh" ? "zh-CN" : "en" }));
   const [params, setParams] = useState<Params>({});
   const [mode, setMode] = useState<"stream" | "offline">("stream");
   const [busy, setBusy] = useState(false);
@@ -78,7 +80,7 @@ export function SpeakView() {
     if (mode === "offline") {
       try {
         const clip = await post<Clip>("/speech", body);
-        player.play({ key: `clip-${clip.id}`, url: clip.url, title: "即时朗读", subtitle: clip.text, color: voice?.color });
+        player.play({ key: `clip-${clip.id}`, url: clip.url, title: t("speak.clipTitle"), subtitle: clip.text, color: voice?.color });
         void loadClips();
       } catch (e) {
         fail(e);
@@ -138,63 +140,63 @@ export function SpeakView() {
   return (
     <>
       <div className="toolbar" data-tauri-drag-region>
-        <h1>即时朗读</h1>
-        <span className="sub">任意文本 → 语音，支持声音设计、克隆与演绎指导</span>
+        <h1>{t("speak.title")}</h1>
+        <span className="sub">{t("speak.subtitle")}</span>
         <div className="spacer" data-tauri-drag-region />
-        <Segmented value={mode} onChange={setMode} options={[{ value: "stream", label: <><Zap size={12} /> 实时流式</> }, { value: "offline", label: "整段生成" }]} />
+        <Segmented value={mode} onChange={setMode} options={[{ value: "stream", label: <><Zap size={12} /> {t("speak.modeStream")}</> }, { value: "offline", label: t("speak.modeOffline") }]} />
       </div>
       <div className="content">
         <div className="page" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 20, alignItems: "start" }}>
           <div className="vstack">
             <div className="card pad">
-              <textarea ref={ta} className="textarea" style={{ minHeight: 170, fontSize: 16, background: "none", boxShadow: "none", padding: 0 }} value={text} onChange={(e) => setText(e.target.value)} placeholder="输入要朗读的文字…" />
+              <textarea ref={ta} className="textarea" style={{ minHeight: 170, fontSize: 16, background: "none", boxShadow: "none", padding: 0 }} value={text} onChange={(e) => setText(e.target.value)} placeholder={t("speak.placeholder")} />
               <div className="hstack" style={{ marginTop: 10, flexWrap: "wrap" }}>
                 <EventChips target={ta} value={text} onChange={setText} lang={zh ? "zh" : "en"} />
                 <span style={{ flex: 1 }} />
-                <span className="hint">{text.length} 字</span>
+                <span className="hint">{t("speak.charCount", { count: text.length })}</span>
               </div>
             </div>
             <div className="card pad vstack">
               <div className="grid cols-2">
                 <div className="field">
-                  <label>声音</label>
-                  <VoiceSelect voices={voices} value={voiceId} onChange={setVoiceId} allowNone noneLabel="无参考 · 按描述现场设计" />
+                  <label>{t("speak.voice")}</label>
+                  <VoiceSelect voices={voices} value={voiceId} onChange={setVoiceId} allowNone noneLabel={t("speak.noReference")} />
                 </div>
                 <div className="field">
-                  <label>{voice?.has_reference ? "演绎指导（Voice Direction）" : voice ? "追加描述" : "声音描述（Voice Design）"}</label>
-                  <input className="input" value={instruct} onChange={(e) => setInstruct(e.target.value)} placeholder={voice?.has_reference ? "例如：语速放慢，语气严肃克制" : "例如：一位温暖沉稳的中年男声"} />
+                  <label>{voice?.has_reference ? t("speak.labelDirection") : voice ? t("speak.labelAppend") : t("speak.labelDesign")}</label>
+                  <input className="input" value={instruct} onChange={(e) => setInstruct(e.target.value)} placeholder={voice?.has_reference ? t("speak.placeholderDirection") : t("speak.placeholderDesign")} />
                 </div>
               </div>
               <div className="hint">
                 {voice?.has_reference
-                  ? `将克隆“${voice.name}”的音色，并按指导调整情绪、语气与节奏。`
+                  ? t("speak.hintClone", { name: voice.name })
                   : voice
-                    ? `“${voice.name}”是描述型声音，每次生成的嗓音会略有不同；在声音设计里把满意的一条保存下来即可固定。`
-                    : "描述语言建议与文本一致（中文文本用中文描述）。"}
+                    ? t("speak.hintDescribed", { name: voice.name })
+                    : t("speak.hintDefault")}
               </div>
             </div>
             <ParamsPanel value={params} onChange={setParams} />
             <div className="hstack">
               {busy && mode === "stream" ? (
-                <button className="btn lg" onClick={() => stopRef.current()}><Square size={13} fill="currentColor" />停止</button>
+                <button className="btn lg" onClick={() => stopRef.current()}><Square size={13} fill="currentColor" />{t("common.stop")}</button>
               ) : (
                 <button className="btn lg primary" disabled={busy || !text.trim() || engine?.state !== "ready"} onClick={run}>
-                  {busy ? <Spinner /> : <AudioLines size={16} />}朗读
+                  {busy ? <Spinner /> : <AudioLines size={16} />}{t("speak.speak")}
                 </button>
               )}
               <div className="wave" style={{ flex: 1, height: 34, color: voice?.color ?? "var(--accent)" }}>
                 {level.map((l, i) => <span key={i} style={{ height: `${Math.max(6, l * 260)}%` }} />)}
               </div>
-              {ttfa !== null && <span className="badge green">首包 {Math.round(ttfa)} ms</span>}
+              {ttfa !== null && <span className="badge green">{t("speak.firstPacket", { ms: Math.round(ttfa) })}</span>}
             </div>
           </div>
           <div>
-            <div className="label" style={{ marginBottom: 8 }}>最近生成</div>
+            <div className="label" style={{ marginBottom: 8 }}>{t("speak.recent")}</div>
             <div className="group">
-              {clips.length === 0 && <div className="row muted small">生成的音频会出现在这里</div>}
+              {clips.length === 0 && <div className="row muted small">{t("speak.recentEmpty")}</div>}
               {clips.map((c) => (
                 <div className="row" key={c.id} style={{ alignItems: "flex-start" }}>
-                  <PlayButton track={{ key: `clip-${c.id}`, url: c.url, title: "即时朗读", subtitle: c.text }} />
+                  <PlayButton track={{ key: `clip-${c.id}`, url: c.url, title: t("speak.clipTitle"), subtitle: c.text }} />
                   <div className="grow">
                     <div className="small" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c.text}</div>
                     <div className="hint hstack" style={{ gap: 6 }}>
@@ -202,9 +204,9 @@ export function SpeakView() {
                     </div>
                   </div>
                   <div className="hstack" style={{ gap: 0 }}>
-                    <button className="btn icon plain" title="复制参数（含种子）" onClick={() => { setText(c.text); setInstruct(c.instruct); setParams({ ...c.params, seed: c.seed }); setVoiceId(c.voice_id); }}><Copy size={13} /></button>
-                    <button className="btn icon plain" title="保存为声音" onClick={() => setSaveClip(c)}><UserPlus size={13} /></button>
-                    <button className="btn icon plain" title="删除" onClick={async () => { await del(`/clips/${c.id}`).catch(fail); void loadClips(); }}><Trash2 size={13} /></button>
+                    <button className="btn icon plain" title={t("speak.copyParams")} onClick={() => { setText(c.text); setInstruct(c.instruct); setParams({ ...c.params, seed: c.seed }); setVoiceId(c.voice_id); }}><Copy size={13} /></button>
+                    <button className="btn icon plain" title={t("speak.saveAsVoice")} onClick={() => setSaveClip(c)}><UserPlus size={13} /></button>
+                    <button className="btn icon plain" title={t("speak.deleteClip")} onClick={async () => { await del(`/clips/${c.id}`).catch(fail); void loadClips(); }}><Trash2 size={13} /></button>
                   </div>
                 </div>
               ))}

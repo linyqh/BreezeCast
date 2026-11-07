@@ -109,7 +109,7 @@ impl AppState {
 
     // ---- jobs ----
 
-    pub fn create_job(&self, kind: &str, target_id: &str, message: &str) -> Job {
+    pub fn create_job(&self, kind: &str, target_id: &str, key: &str, args: Value, message: &str) -> Job {
         let job = Job {
             id: new_id("j"),
             kind: kind.into(),
@@ -117,6 +117,8 @@ impl AppState {
             status: "queued".into(),
             progress: 0.0,
             message: message.into(),
+            message_key: Some(key.into()),
+            message_args: Some(args),
             error: None,
             result: None,
             created_at: now(),

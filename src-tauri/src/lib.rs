@@ -2,6 +2,7 @@ mod api;
 mod audio;
 mod db;
 mod engine;
+mod errors;
 mod packages;
 mod script;
 mod service;
@@ -25,11 +26,12 @@ fn api_info() -> serde_json::Value {
     }
 }
 
-const SKILL_DIRS: [(&str, &str); 4] = [
-    ("Claude Code", ".claude/skills"),
-    ("Codex", ".codex/skills"),
-    ("oh-my-pi", ".omp/agent/skills"),
-    ("通用 Agents", ".agents/skills"),
+// (id, display name, path relative to $HOME). `id` is stable so the UI can localise the name.
+const SKILL_DIRS: [(&str, &str, &str); 4] = [
+    ("claude-code", "Claude Code", ".claude/skills"),
+    ("codex", "Codex", ".codex/skills"),
+    ("omp", "oh-my-pi", ".omp/agent/skills"),
+    ("generic", "通用 Agents", ".agents/skills"),
 ];
 
 fn home() -> std::path::PathBuf {
@@ -41,11 +43,11 @@ fn skill_targets() -> serde_json::Value {
     let h = home();
     SKILL_DIRS
         .iter()
-        .map(|(name, rel)| {
+        .map(|(id, name, rel)| {
             let dir = h.join(rel);
             let agent_root = dir.parent().map(|p| p.exists()).unwrap_or(false);
             json!({
-                "name": name, "dir": dir, "available": agent_root,
+                "id": id, "name": name, "dir": dir, "available": agent_root,
                 "installed": dir.join("breezecast").join("SKILL.md").exists(),
             })
         })
@@ -68,18 +70,18 @@ fn copy_dir(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()>
 
 /// Copies the bundled skill into `<dir>/breezecast`, replacing an older copy.
 #[tauri::command]
-fn install_skill(app: tauri::AppHandle, dir: String) -> Result<String, String> {
+fn install_skill(app: tauri::AppHandle, dir: String) -> Result<String, errors::CommandError> {
     let src = app
         .path()
         .resolve("skills/breezecast", tauri::path::BaseDirectory::Resource)
-        .map_err(|e| e.to_string())?;
+        .map_err(errors::CommandError::io)?;
     let dst = std::path::PathBuf::from(dir).join("breezecast");
     if dst.is_symlink() {
-        std::fs::remove_file(&dst).map_err(|e| e.to_string())?;
+        std::fs::remove_file(&dst).map_err(errors::CommandError::io)?;
     } else if dst.exists() {
-        std::fs::remove_dir_all(&dst).map_err(|e| e.to_string())?;
+        std::fs::remove_dir_all(&dst).map_err(errors::CommandError::io)?;
     }
-    copy_dir(&src, &dst).map_err(|e| format!("复制失败：{e}"))?;
+    copy_dir(&src, &dst).map_err(|e| errors::CommandError::new("error.skill_copy_failed", json!({"detail": e.to_string()}), format!("复制失败：{e}")))?;
     Ok(dst.to_string_lossy().into())
 }
 
@@ -94,7 +96,7 @@ async fn serve_api(state: Shared, app: tauri::AppHandle) {
     let listener = match tokio::net::TcpListener::bind(("0.0.0.0", port)).await {
         Ok(l) => l,
         Err(e) => {
-            let _ = app.emit("api-error", format!("端口 {port} 被占用：{e}"));
+            let _ = app.emit("api-error", json!({"message": format!("端口 {port} 被占用：{e}"), "message_key": "error.port_in_use", "message_args": {"port": port, "detail": e.to_string()}}));
             eprintln!("API bind failed on {port}: {e}");
             return;
         }

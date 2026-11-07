@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { AudioLines, Bot, Cpu, Library, Mic, Pause, Play, Sparkles, Users, Wand2, X } from "lucide-react";
-import { backendLabel, initApi, fmtMs } from "./api";
+import { backendLabel, initApi, fmtMs, localized } from "./api";
 import { StoreProvider, usePlayer, useStore, type Route } from "./store";
 import { LibraryView, ShowView } from "./views/Library";
 import { EpisodeView } from "./views/Episode";
@@ -10,37 +11,33 @@ import { CloneView } from "./views/Clone";
 import { VoicesView } from "./views/Voices";
 import { EngineView } from "./views/Engine";
 import { AgentsView } from "./views/Agents";
-import { Spinner } from "./ui";
+import { LanguageSwitcher, Spinner } from "./ui";
 
-const NAV: { section: string; items: { route: Route["name"]; label: string; icon: typeof Library }[] }[] = [
-  { section: "资料库", items: [{ route: "library", label: "节目", icon: Library }] },
+type NavKey = "library" | "create" | "system";
+type NavLabel = "shows" | "speak" | "design" | "clone" | "voices" | "engine" | "agents";
+
+const NAV: { section: NavKey; items: { route: Route["name"]; label: NavLabel; icon: typeof Library }[] }[] = [
+  { section: "library", items: [{ route: "library", label: "shows", icon: Library }] },
   {
-    section: "创作",
+    section: "create",
     items: [
-      { route: "speak", label: "即时朗读", icon: AudioLines },
-      { route: "design", label: "声音设计", icon: Wand2 },
-      { route: "clone", label: "声音克隆", icon: Mic },
-      { route: "voices", label: "声音库", icon: Users },
+      { route: "speak", label: "speak", icon: AudioLines },
+      { route: "design", label: "design", icon: Wand2 },
+      { route: "clone", label: "clone", icon: Mic },
+      { route: "voices", label: "voices", icon: Users },
     ],
   },
   {
-    section: "系统",
+    section: "system",
     items: [
-      { route: "engine", label: "模型与引擎", icon: Cpu },
-      { route: "agents", label: "API 与 Agent", icon: Bot },
+      { route: "engine", label: "engine", icon: Cpu },
+      { route: "agents", label: "agents", icon: Bot },
     ],
   },
 ];
 
-const ENGINE_LABEL: Record<string, string> = {
-  ready: "引擎就绪",
-  starting: "正在加载模型…",
-  stopped: "引擎已停止",
-  error: "引擎出错",
-  no_model: "未安装模型",
-};
-
 function Sidebar() {
+  const { t } = useTranslation();
   const { route, go, engine, voices, shows, status } = useStore();
   const active = route.name === "show" || route.name === "episode" ? "library" : route.name;
   const counts: Partial<Record<Route["name"], number>> = { library: shows.length, voices: voices.length };
@@ -51,15 +48,15 @@ function Sidebar() {
         <div className="brand-name" data-tauri-drag-region>
           Breeze<b>Cast</b>
         </div>
-        <div className="brand-tag" data-tauri-drag-region>本地 AI 播客工作室</div>
+        <div className="brand-tag" data-tauri-drag-region>{t("app.tagline")}</div>
       </div>
       {NAV.map((g) => (
         <div key={g.section}>
-          <div className="side-section">{g.section}</div>
+          <div className="side-section">{t(`app.nav.${g.section}`)}</div>
           {g.items.map((it) => (
             <button key={it.route} className={`side-item ${active === it.route ? "active" : ""}`} onClick={() => go({ name: it.route } as Route)}>
               <it.icon size={16} strokeWidth={1.9} />
-              {it.label}
+              {t(`app.nav.${it.label}`)}
               {counts[it.route] ? <span className="count">{counts[it.route]}</span> : null}
             </button>
           ))}
@@ -69,18 +66,20 @@ function Sidebar() {
         <button className="engine-pill" onClick={() => go({ name: "engine" })}>
           <span className={`dot ${engine?.state ?? ""}`} />
           <span className="grow" style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600 }}>{ENGINE_LABEL[engine?.state ?? "stopped"]}</div>
+            <div style={{ fontWeight: 600 }}>{t(`app.enginePill.${engine?.state ?? "stopped"}`)}</div>
             <div className="muted" style={{ fontSize: 11 }}>
               BreezeTTS 2 · {status?.model.active_package.replace("breeze_tts_2_", "").toUpperCase() ?? "—"} · {backendLabel(engine?.backend)}
             </div>
           </span>
         </button>
+        <LanguageSwitcher />
       </div>
     </aside>
   );
 }
 
 function PlayerBar() {
+  const { t: tr } = useTranslation();
   const p = usePlayer();
   const t = p.track;
   const dur = p.duration || 0;
@@ -91,7 +90,7 @@ function PlayerBar() {
       </div>
       <div className="meta">
         <div className="t ellipsis">{t?.title}</div>
-        <div className="s ellipsis">{currentChapter(p.time, t?.chapters) ?? t?.subtitle}</div>
+        <div className="s ellipsis">{currentChapter(p.time, t?.chapters, (c) => tr("app.player.chapter", c)) ?? t?.subtitle}</div>
       </div>
       <button className="play-btn" onClick={p.toggle}>
         {p.playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" style={{ marginLeft: 2 }} />}
@@ -112,16 +111,16 @@ function PlayerBar() {
         </div>
         <span>{fmtMs(dur * 1000)}</span>
       </div>
-      <button className="btn icon plain" onClick={p.stop} title="关闭">
+      <button className="btn icon plain" onClick={p.stop} title={tr("app.player.close")}>
         <X size={15} />
       </button>
     </div>
   );
 }
 
-function currentChapter(time: number, chapters?: { start_ms: number; end_ms: number; speaker: string; text: string }[]) {
+function currentChapter(time: number, chapters: { start_ms: number; end_ms: number; speaker: string; text: string }[] | undefined, format: (c: { speaker: string; text: string }) => string) {
   const c = chapters?.find((c) => time * 1000 >= c.start_ms && time * 1000 < c.end_ms + 400);
-  return c ? `${c.speaker}：${c.text}` : undefined;
+  return c ? format(c) : undefined;
 }
 
 function Router() {
@@ -149,6 +148,7 @@ function Router() {
 }
 
 function EngineBanner() {
+  const { t } = useTranslation();
   const { engine, go, route } = useStore();
   if (!engine || engine.state === "ready" || route.name === "engine") return null;
   const starting = engine.state === "starting";
@@ -156,11 +156,11 @@ function EngineBanner() {
     <div className="card" style={{ margin: "0 26px 10px", padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
       {starting ? <Spinner /> : <Sparkles size={16} color="var(--orange)" />}
       <div style={{ flex: 1 }} className="small">
-        {starting ? "正在把 BreezeTTS 2 载入 GPU，约 10–20 秒…" : engine.state === "no_model" ? "还没有安装 BreezeTTS 2 模型，下载后即可开始创作。" : `推理引擎不可用：${engine.message.split("\n")[0]}`}
+        {starting ? t("app.banner.starting") : engine.state === "no_model" ? t("app.banner.noModel") : t("app.banner.unavailable", { message: localized(engine).split("\n")[0] })}
       </div>
       {!starting && (
         <button className="btn sm primary" onClick={() => go({ name: "engine" })}>
-          {engine.state === "no_model" ? "下载模型" : "查看"}
+          {engine.state === "no_model" ? t("app.banner.download") : t("app.banner.view")}
         </button>
       )}
     </div>
@@ -182,12 +182,13 @@ function Shell() {
 }
 
 export default function App() {
+  const { t } = useTranslation();
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     initApi().then(() => setReady(true), (e: Error) => setError(e.message));
   }, []);
-  if (error) return <div className="empty"><h3>无法启动</h3><p>{error}</p></div>;
+  if (error) return <div className="empty"><h3>{t("app.startFailed")}</h3><p>{error}</p></div>;
   if (!ready) return <div className="empty"><Spinner /></div>;
   return (
     <StoreProvider>

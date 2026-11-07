@@ -1,3 +1,4 @@
+use crate::errors::{self, AppError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -39,9 +40,9 @@ impl Params {
         }
     }
 
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), AppError> {
         let pos = |v: Option<f64>, n: &str| match v {
-            Some(x) if !(x.is_finite() && x > 0.0) => Err(format!("{n} must be > 0")),
+            Some(x) if !(x.is_finite() && x > 0.0) => Err(errors::invalid("param_positive", serde_json::json!({"name": n}), format!("{n} must be > 0"))),
             _ => Ok(()),
         };
         pos(self.temperature, "temperature")?;
@@ -50,18 +51,18 @@ impl Params {
         if let Some(g) = self.guidance_scale
             && !(g.is_finite() && g >= 0.0)
         {
-            return Err("guidance_scale must be >= 0".into());
+            return Err(errors::invalid("param_guidance_scale", Value::Null, "guidance_scale must be >= 0"));
         }
         if matches!(self.max_tokens, Some(x) if x <= 0) {
-            return Err("max_tokens must be > 0".into());
+            return Err(errors::invalid("param_max_tokens", Value::Null, "max_tokens must be > 0"));
         }
         if matches!(self.text_chunk_size, Some(x) if x <= 0) {
-            return Err("text_chunk_size must be > 0".into());
+            return Err(errors::invalid("param_text_chunk_size", Value::Null, "text_chunk_size must be > 0"));
         }
         if let Some(m) = &self.text_chunk_mode
             && !["default", "tag_aware", "endline"].contains(&m.as_str())
         {
-            return Err("text_chunk_mode must be default, tag_aware or endline".into());
+            return Err(errors::invalid("param_text_chunk_mode", Value::Null, "text_chunk_mode must be default, tag_aware or endline"));
         }
         Ok(())
     }
@@ -195,6 +196,11 @@ pub struct Episode {
     pub audio: Option<EpisodeAudio>,
     #[serde(default)]
     pub failed: Option<String>,
+    /// i18n key + args for `failed` (see `errors::AppError`).
+    #[serde(default)]
+    pub failed_key: Option<String>,
+    #[serde(default)]
+    pub failed_args: Option<Value>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -206,11 +212,32 @@ pub struct Job {
     pub target_id: String,
     pub status: String,
     pub progress: f64,
+    /// Human-readable status in the backend's default language (kept for API clients).
     pub message: String,
+    /// Stable i18n key + interpolation args so UIs can localise `message`.
+    #[serde(default)]
+    pub message_key: Option<String>,
+    #[serde(default)]
+    pub message_args: Option<Value>,
     pub error: Option<String>,
     pub result: Option<Value>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+impl Job {
+    pub fn set_message(&mut self, key: &str, args: Value, text: impl Into<String>) {
+        self.message = text.into();
+        self.message_key = Some(key.into());
+        self.message_args = Some(args);
+    }
+
+    /// Language-neutral message (e.g. a progress counter) with no translation key.
+    pub fn set_text(&mut self, text: impl Into<String>) {
+        self.message = text.into();
+        self.message_key = None;
+        self.message_args = None;
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

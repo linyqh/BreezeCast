@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import i18n from "./i18n";
 
 export type Params = {
   guidance_scale?: number;
@@ -73,6 +74,9 @@ export type Job = {
   status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
   progress: number;
   message: string;
+  /** i18n key under `job.*` (+ interpolation args) for localising `message`. */
+  message_key?: string | null;
+  message_args?: Record<string, unknown> | null;
   error: string | null;
   result: Record<string, unknown> | null;
   created_at: string;
@@ -89,12 +93,21 @@ export type Episode = {
   params: Params;
   status: "draft" | "rendering" | "rendered" | "stale" | "failed";
   failed: string | null;
+  failed_key?: string | null;
+  failed_args?: Record<string, unknown> | null;
   audio: { path: string; url: string; duration_ms: number; rendered_at: string; chapters?: Chapter[] } | null;
   job: Job | null;
   created_at: string;
   updated_at: string;
 };
-export type EngineStatus = { state: "stopped" | "starting" | "ready" | "error" | "no_model"; message: string; backend: string; port: number };
+export type EngineStatus = {
+  state: "stopped" | "starting" | "ready" | "error" | "no_model";
+  message: string;
+  message_key?: string | null;
+  message_args?: Record<string, unknown> | null;
+  backend: string;
+  port: number;
+};
 const BACKEND_LABELS: Record<string, string> = { metal: "Metal", vulkan: "Vulkan", cuda: "CUDA", cpu: "CPU" };
 export const backendLabel = (b?: string) => (b ? BACKEND_LABELS[b] ?? b.toUpperCase() : "—");
 export type Status = {
@@ -147,14 +160,37 @@ export async function initApi(): Promise<void> {
     }
     await sleep(150);
   }
-  throw new Error("BreezeCast API 未能启动");
+  throw new Error(i18n.t("app.apiUnavailable"));
 }
+
+/**
+ * A backend payload that can be shown in the UI language: `message` is the API's own
+ * (default-language) text; `message_key` + `message_args` select a translation.
+ */
+export type Localizable = { message?: string; message_key?: string | null; message_args?: Record<string, unknown> | null };
+
+/** Translated text for a backend payload; falls back to `message` when the key is absent or unknown. */
+export function localized(p: Localizable, fallback = ""): string {
+  const key = p.message_key;
+  // Keys come from the backend at runtime, so they cannot be statically checked.
+  if (key && i18n.exists(key)) return i18n.t(key as "job.done", { ...p.message_args });
+  return p.message ?? fallback;
+}
+
+/** Message of any thrown value: `Error`s, Tauri command errors (`{message, message_key, …}`) or strings. */
+export function errorText(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object" && ("message" in e || "message_key" in e)) return localized(e as Localizable, String(e));
+  return String(e);
+}
+
+export const jobMessage = (job: Job): string => localized(job);
 
 export const apiBase = () => base;
 
-type ErrorBody = { error?: { code?: string; message?: string } };
+type ErrorBody = { error?: { code?: string } & Localizable };
 
-function errorOf(data: unknown): { code?: string; message?: string } {
+function errorOf(data: unknown): { code?: string } & Localizable {
   if (data && typeof data === "object" && "error" in data) return (data as ErrorBody).error ?? {};
   return {};
 }
@@ -180,7 +216,7 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
   }
   if (!res.ok) {
     const e = errorOf(data);
-    throw new ApiError(e.code ?? "error", e.message ?? `HTTP ${res.status}`, res.status);
+    throw new ApiError(e.code ?? "error", localized(e, `HTTP ${res.status}`), res.status);
   }
   // Response shapes are defined by docs/API.md; callers name the type.
   return data as T;
@@ -242,7 +278,7 @@ export function streamSpeech(body: unknown, h: StreamHandlers): () => void {
       });
       if (!res.ok || !res.body) {
         const e = errorOf(await res.json().catch(() => null));
-        h.onError(e.message ?? `HTTP ${res.status}`);
+        h.onError(localized(e, `HTTP ${res.status}`));
         return;
       }
       const reader = res.body.getReader();
@@ -265,7 +301,7 @@ export function streamSpeech(body: unknown, h: StreamHandlers): () => void {
               for (let k = 0; k < bin.length; k++) bytes[k] = bin.charCodeAt(k);
               h.onAudio(new Int16Array(bytes.buffer, 0, bytes.length >> 1));
             } else if (ev.type === "done") h.onDone(ev.clip);
-            else h.onError(ev.message);
+            else h.onError(localized(ev));
           }
         }
       }
@@ -279,7 +315,7 @@ export function streamSpeech(body: unknown, h: StreamHandlers): () => void {
 type StreamEvent =
   | { type: "audio"; pcm16_base64: string }
   | { type: "done"; clip: Clip }
-  | { type: "error"; message: string };
+  | ({ type: "error" } & Localizable & { message: string });
 
 export function fileToBase64(file: Blob): Promise<string> {
   const { promise, resolve, reject } = Promise.withResolvers<string>();

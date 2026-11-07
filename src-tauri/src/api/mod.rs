@@ -3,6 +3,7 @@ mod models;
 mod system;
 mod voices;
 
+use crate::errors::{self, AppError};
 use crate::state::Shared;
 use axum::extract::Request;
 use axum::http::{StatusCode, header};
@@ -18,40 +19,51 @@ pub struct ApiError {
     status: StatusCode,
     code: String,
     message: String,
+    /// i18n key + args so UIs can localise `message`; `code` and `message` stay the API contract.
+    key: Option<String>,
+    args: Option<Value>,
 }
 
 impl ApiError {
+    /// Untranslated error: UIs fall back to `message`. Prefer an `AppError` with an i18n key.
     pub fn new(status: StatusCode, code: &str, message: impl Into<String>) -> ApiError {
-        ApiError { status, code: code.into(), message: message.into() }
+        ApiError { status, code: code.into(), message: message.into(), key: None, args: None }
     }
     pub fn bad(message: impl Into<String>) -> ApiError {
         ApiError::new(StatusCode::BAD_REQUEST, "invalid_request", message)
     }
 }
 
+impl From<AppError> for ApiError {
+    fn from(e: AppError) -> Self {
+        let key = e.full_key();
+        ApiError { status: errors::status_of(e.code), code: e.code.into(), message: e.message, key: Some(key), args: Some(e.args) }
+    }
+}
+
 /// Service errors carry a `code: message` prefix; the code picks the HTTP status.
 impl From<anyhow::Error> for ApiError {
     fn from(e: anyhow::Error) -> Self {
+        if let Some(app) = errors::find(&e) {
+            return app.clone().into();
+        }
         let full = format!("{e:#}");
         let (code, message) = match full.split_once(": ") {
             Some((c, m)) if !c.is_empty() && c.chars().all(|ch| ch.is_ascii_lowercase() || ch == '_') => (c.to_string(), m.to_string()),
             _ => ("internal".to_string(), full.clone()),
         };
-        let status = match code.as_str() {
-            "not_found" => StatusCode::NOT_FOUND,
-            c if c.starts_with("invalid") || c == "cast_missing" => StatusCode::BAD_REQUEST,
-            c if c.starts_with("engine_unavailable") || c == "engine_starting" || c == "engine_no_model" => StatusCode::SERVICE_UNAVAILABLE,
-            "not_rendered" | "render_incomplete" | "conflict" => StatusCode::CONFLICT,
-            "engine_error" => StatusCode::BAD_GATEWAY,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        ApiError { status, code, message }
+        ApiError { status: errors::status_of(&code), code, message, key: None, args: None }
     }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.status, Json(json!({"error": {"code": self.code, "message": self.message}}))).into_response()
+        let mut error = json!({"code": self.code, "message": self.message});
+        if let Some(key) = self.key {
+            error["message_key"] = json!(key);
+            error["message_args"] = self.args.unwrap_or(Value::Null);
+        }
+        (self.status, Json(json!({ "error": error }))).into_response()
     }
 }
 
@@ -94,7 +106,7 @@ pub fn lan_ip() -> Option<std::net::IpAddr> {
 
 pub async fn serve_file(path: PathBuf, req: Request) -> ApiResult<Response> {
     if !path.exists() {
-        return Err(ApiError::new(StatusCode::NOT_FOUND, "not_found", "音频文件不存在"));
+        return Err(errors::not_found("audio_file_not_found", json!({}), "音频文件不存在").into());
     }
     let res = tower_http::services::ServeFile::new(path).oneshot(req).await.map_err(|e| ApiError::bad(e.to_string()))?;
     Ok(res.map(axum::body::Body::new))
@@ -161,4 +173,48 @@ pub fn router(state: Shared) -> Router {
         .route("/", get(|| async { "BreezeCast API — see /api/v1/capabilities" }))
         .layer(cors)
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::Params;
+
+    async fn body_of(e: impl Into<ApiError>) -> (StatusCode, Value) {
+        let res = e.into().into_response();
+        let status = res.status();
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    #[tokio::test]
+    async fn typed_error_keeps_contract_and_adds_i18n_fields() {
+        // Wrapped in context: the typed error must still be found in the chain.
+        let e = anyhow::Error::new(AppError::new("cast_missing", "cast_missing", json!({"speaker": "A"}), "角色“A”还没有分配声音")).context("render");
+        let (status, v) = body_of(e).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(v["error"]["code"], "cast_missing");
+        assert_eq!(v["error"]["message"], "角色“A”还没有分配声音");
+        assert_eq!(v["error"]["message_key"], "error.cast_missing");
+        assert_eq!(v["error"]["message_args"]["speaker"], "A");
+    }
+
+    #[tokio::test]
+    async fn untyped_error_has_no_i18n_fields() {
+        let (status, v) = body_of(anyhow::anyhow!("not_found: 声音 v1 不存在")).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(v["error"]["code"], "not_found");
+        assert_eq!(v["error"]["message"], "声音 v1 不存在");
+        assert!(v["error"].get("message_key").is_none());
+    }
+
+    #[tokio::test]
+    async fn param_validation_error_is_typed_bad_request() {
+        let p = Params { temperature: Some(-1.0), ..Default::default() };
+        let (status, v) = body_of(p.validate().unwrap_err()).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(v["error"]["code"], "invalid_request");
+        assert_eq!(v["error"]["message"], "temperature must be > 0");
+        assert_eq!(v["error"]["message_key"], "error.param_positive");
+    }
 }

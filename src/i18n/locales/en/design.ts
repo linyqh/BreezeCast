@@ -1,0 +1,18 @@
+export default {
+  title: "Voice Design",
+  subtitle: "Describe a voice in a sentence and create it from nothing",
+  description: "Voice description",
+  descriptionHint: "Works best when the description language matches the preview text. Describe age, gender, timbre, emotion, pace, accent and use case.",
+  previewText: "Preview text",
+  previewHint: "After saving, this text becomes the voice's reference transcript. Use 10–20 seconds of natural speech without vocal events.",
+  perRun: "Per run",
+  takes: "{{count}} takes",
+  generating: "Generating, {{count}} left…",
+  generate: "Generate {{count}} candidate voices",
+  emptyTitle: "Pick the take you like best",
+  emptyBody: "BreezeTTS 2 sounds slightly different every time it renders a description. Generate a few takes and “Save as voice” on your favourite: it becomes the reference sample and stays the same person across a whole season.",
+  pending: "Generating…",
+  take: "Take #{{n}}",
+  saveAsVoice: "Save as voice",
+  seed: "seed {{seed}}",
+};
