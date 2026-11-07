@@ -3,7 +3,7 @@ name = "breezecast"
 version = "0.1.0"
 description = "BreezeCast — local podcast studio powered by BreezeTTS 2 and audio.cpp"
 authors = ["BreezeCast"]
-license = "MIT"
+license = "Apache-2.0"
 edition = "2024"
 
 [lib]
