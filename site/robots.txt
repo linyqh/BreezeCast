@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://linyqh.github.io/BreezeCast/sitemap.xml
