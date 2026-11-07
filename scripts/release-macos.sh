@@ -27,9 +27,9 @@ if [ "$(git rev-parse HEAD)" != "$(git rev-parse "$TAG^{commit}" 2>/dev/null)" ]
   echo "warning: working tree differs from $TAG; the uploaded dmg will not match the tagged source" >&2
 fi
 
-# Sign with the Developer ID certificate in the login keychain; tauri build signs when
-# APPLE_SIGNING_IDENTITY is set, and notarizes when APPLE_ID/APPLE_PASSWORD/APPLE_TEAM_ID or
-# APPLE_API_KEY/APPLE_API_ISSUER/APPLE_API_KEY_PATH are set.
+# Sign with the Developer ID certificate in the login keychain (tauri build signs when
+# APPLE_SIGNING_IDENTITY is set), then notarize with a notarytool keychain profile, created once via
+# `xcrun notarytool store-credentials <name> --apple-id <id> --team-id <team>`.
 if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
   APPLE_SIGNING_IDENTITY="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | head -n 1)"
 fi
@@ -38,10 +38,9 @@ if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
   exit 1
 fi
 export APPLE_SIGNING_IDENTITY
-echo "signing with: $APPLE_SIGNING_IDENTITY"
-if [ -z "${APPLE_ID:-}${APPLE_API_KEY:-}" ]; then
-  echo "warning: no notarization credentials; Gatekeeper will still block the downloaded dmg" >&2
-fi
+NOTARY_PROFILE="${NOTARY_PROFILE:-murmur-notary}"
+echo "signing with: $APPLE_SIGNING_IDENTITY; notarizing with keychain profile: $NOTARY_PROFILE"
+xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null
 
 if [ "$SKIP_BUILD" = 0 ]; then
   TRIPLE="$(rustc -vV | sed -n 's/^host: //p')"
@@ -63,6 +62,14 @@ for f in "$APP" "${DMGS[@]}"; do
     echo "$f is not signed by $APPLE_SIGNING_IDENTITY" >&2
     exit 1
   fi
+done
+
+for dmg in "${DMGS[@]}"; do
+  if ! xcrun stapler validate "$dmg" >/dev/null 2>&1; then
+    xcrun notarytool submit "$dmg" --keychain-profile "$NOTARY_PROFILE" --wait
+    xcrun stapler staple "$dmg"
+  fi
+  spctl -a -vv -t open --context context:primary-signature "$dmg"
 done
 
 if ! gh release view "$TAG" >/dev/null 2>&1; then
