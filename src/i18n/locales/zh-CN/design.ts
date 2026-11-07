@@ -1,0 +1,18 @@
+export default {
+  title: "声音设计",
+  subtitle: "用一句话描述，凭空创造一个声音",
+  description: "声音描述",
+  descriptionHint: "描述语言与试听文本保持一致效果最好。可以描述年龄、性别、音色、情绪、语速、口音和使用场景。",
+  previewText: "试听文本",
+  previewHint: "保存后，这段文本会成为该声音的参考逐字稿，建议 10–20 秒的自然口语，不要加声音事件。",
+  perRun: "每次生成",
+  takes: "{{count}} 版",
+  generating: "正在生成，还剩 {{count}} 版…",
+  generate: "生成 {{count}} 个候选声音",
+  emptyTitle: "挑出你最喜欢的那一版",
+  emptyBody: "BreezeTTS 2 每次按描述生成的嗓音都略有不同。多生成几版，把最满意的“保存为声音”，它就会作为参考样本固定下来，在整季节目里保持同一个人。",
+  pending: "生成中…",
+  take: "候选 #{{n}}",
+  saveAsVoice: "保存为声音",
+  seed: "seed {{seed}}",
+};

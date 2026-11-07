@@ -449,7 +449,7 @@ pub async fn render(State(state): State<Shared>, Path(id): Path<String>, body: O
     let job = match state.active_job_for(&id) {
         Some(j) => j,
         None => {
-            let job = state.create_job("render_episode", &id, &format!("渲染《{}》", ep.title));
+            let job = state.create_job("render_episode", &id, "job.render_queued", json!({"title": ep.title}), &format!("渲染《{}》", ep.title));
             state
                 .render_tx
                 .send(RenderTask { job_id: job.id.clone(), episode_id: id.clone(), line_ids: b.line_ids, force: b.force })
@@ -517,7 +517,7 @@ pub async fn cancel_job(State(state): State<Shared>, Path(id): Path<String>) -> 
     if job.status == "queued" {
         state.update_job(&id, |j| {
             j.status = "cancelled".into();
-            j.message = "已取消".into();
+            j.set_message("job.cancelled", json!({}), "已取消");
         });
     }
     ok(state.job(&id))

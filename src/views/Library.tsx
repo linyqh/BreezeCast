@@ -1,31 +1,29 @@
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { FilePlus2, Library, Plus, Radio, Trash2 } from "lucide-react";
 import { del, patch, post, type Episode, type Show } from "../api";
+import { defaultContentLang, sampleText } from "../i18n";
 import { useStore } from "../store";
 import { Duration, Empty, PlayButton, Sheet, coverStyle } from "../ui";
 
 const SHOW_COLORS = ["#5E5CE6", "#0A84FF", "#BF5AF2", "#FF375F", "#FF9F0A", "#30D158", "#64D2FF", "#AC8E68"];
 
-const SCRIPT_TEMPLATE = `主持人: [笑] 大家好，欢迎收听本期节目！
-嘉宾 {轻松、带点好奇}: 你好你好，很高兴来到这里。
-主持人: 今天我们聊一个有意思的话题……
-<pause 1s>
-嘉宾 {若有所思，语速放慢}: 嗯，我觉得这个问题可以从两方面看。`;
 
-const STATUS_BADGE: Record<Episode["status"], [string, string]> = {
-  draft: ["草稿", ""],
-  rendering: ["生成中", "accent"],
-  rendered: ["已完成", "green"],
-  stale: ["有改动", "orange"],
-  failed: ["失败", "red"],
+const STATUS_BADGE_CLASS: Record<Episode["status"], string> = {
+  draft: "",
+  rendering: "accent",
+  rendered: "green",
+  stale: "orange",
+  failed: "red",
 };
 
 export function StatusBadge({ status }: { status: Episode["status"] }) {
-  const [label, cls] = STATUS_BADGE[status];
-  return <span className={`badge ${cls}`}>{label}</span>;
+  const { t } = useTranslation();
+  return <span className={`badge ${STATUS_BADGE_CLASS[status]}`}>{t(`library.status.${status}`)}</span>;
 }
 
 export function NewShowSheet({ onClose, show }: { onClose: () => void; show?: Show }) {
+  const { t } = useTranslation();
   const { go, fail } = useStore();
   const [title, setTitle] = useState(show?.title ?? "");
   const [description, setDescription] = useState(show?.description ?? "");
@@ -46,27 +44,27 @@ export function NewShowSheet({ onClose, show }: { onClose: () => void; show?: Sh
   };
   return (
     <Sheet
-      title={show ? "编辑节目" : "新建节目"}
-      subtitle="节目是单集的合集，例如一档每周更新的对谈播客。"
+      title={show ? t("library.showSheet.titleEdit") : t("library.showSheet.titleNew")}
+      subtitle={t("library.showSheet.subtitle")}
       onClose={onClose}
       actions={
         <>
-          <button className="btn" onClick={onClose}>取消</button>
-          <button className="btn primary" disabled={!title.trim()} onClick={save}>{show ? "保存" : "创建"}</button>
+          <button className="btn" onClick={onClose}>{t("common.cancel")}</button>
+          <button className="btn primary" disabled={!title.trim()} onClick={save}>{show ? t("common.save") : t("common.create")}</button>
         </>
       }
     >
       <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 18 }}>
         <div className="cover" style={coverStyle(color)}>
-          <div className="t">{title || "节目名称"}</div>
+          <div className="t">{title || t("library.showSheet.coverPlaceholder")}</div>
         </div>
         <div className="vstack">
           <div className="field">
-            <label>名称</label>
-            <input className="input" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例如：声波漫谈" />
+            <label>{t("library.showSheet.name")}</label>
+            <input className="input" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("library.showSheet.namePlaceholder")} />
           </div>
           <div className="field">
-            <label>主播 / 作者</label>
+            <label>{t("library.showSheet.author")}</label>
             <input className="input" value={author} onChange={(e) => setAuthor(e.target.value)} />
           </div>
           <div className="chips">
@@ -77,7 +75,7 @@ export function NewShowSheet({ onClose, show }: { onClose: () => void; show?: Sh
         </div>
       </div>
       <div className="field" style={{ marginTop: 14 }}>
-        <label>简介</label>
+        <label>{t("library.showSheet.description")}</label>
         <textarea className="textarea" value={description} onChange={(e) => setDescription(e.target.value)} style={{ minHeight: 70 }} />
       </div>
     </Sheet>
@@ -85,15 +83,16 @@ export function NewShowSheet({ onClose, show }: { onClose: () => void; show?: Sh
 }
 
 export function NewEpisodeSheet({ onClose, showId }: { onClose: () => void; showId?: string | null }) {
+  const { t } = useTranslation();
   const { go, fail, shows } = useStore();
   const [title, setTitle] = useState("");
   const [show, setShow] = useState<string>(showId ?? "");
-  const [script, setScript] = useState(SCRIPT_TEMPLATE);
+  const [script, setScript] = useState(() => sampleText("scriptTemplate", defaultContentLang()));
   const [busy, setBusy] = useState(false);
   const create = async () => {
     setBusy(true);
     try {
-      const ep = await post<Episode>("/episodes", { title: title || "未命名单集", show_id: show || null, script });
+      const ep = await post<Episode>("/episodes", { title: title || t("library.episodeSheet.untitled"), show_id: show || null, script });
       onClose();
       go({ name: "episode", id: ep.id });
     } catch (e) {
@@ -104,35 +103,44 @@ export function NewEpisodeSheet({ onClose, showId }: { onClose: () => void; show
   };
   return (
     <Sheet
-      title="新建单集"
-      subtitle="粘贴或编写脚本，之后可以在编辑器里逐句调整、分配声音。"
+      title={t("library.episodeSheet.title")}
+      subtitle={t("library.episodeSheet.subtitle")}
       width={680}
       onClose={onClose}
       actions={
         <>
-          <button className="btn" onClick={onClose}>取消</button>
-          <button className="btn primary" disabled={busy} onClick={create}>创建单集</button>
+          <button className="btn" onClick={onClose}>{t("common.cancel")}</button>
+          <button className="btn primary" disabled={busy} onClick={create}>{t("library.episodeSheet.create")}</button>
         </>
       }
     >
       <div className="grid cols-2">
         <div className="field">
-          <label>标题</label>
-          <input className="input" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="第 1 期：…" />
+          <label>{t("library.episodeSheet.fieldTitle")}</label>
+          <input className="input" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("library.episodeSheet.titlePlaceholder")} />
         </div>
         <div className="field">
-          <label>所属节目</label>
+          <label>{t("library.episodeSheet.show")}</label>
           <select className="input" value={show} onChange={(e) => setShow(e.target.value)}>
-            <option value="">独立单集</option>
+            <option value="">{t("library.episodeSheet.standalone")}</option>
             {shows.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
           </select>
         </div>
       </div>
       <div className="field" style={{ marginTop: 14 }}>
-        <label>脚本</label>
+        <label>{t("library.episodeSheet.script")}</label>
         <textarea className="textarea mono" style={{ minHeight: 220, fontSize: 13 }} value={script} onChange={(e) => setScript(e.target.value)} />
         <div className="hint">
-          <span className="kbd">角色: 台词</span> 一行一句 · <span className="kbd">{"角色 {演绎指导}: 台词"}</span> 控制语气 · <span className="kbd">{"<pause 1.5s>"}</span> 插入停顿 · 中文用 <span className="kbd">[笑]</span> 英文用 <span className="kbd">(laugh)</span> 插入声音事件。与声音库同名的角色会自动配音。
+          <Trans
+            i18nKey="library.episodeSheet.hint"
+            components={{
+              line: <span className="kbd">{t("library.episodeSheet.kbdLine")}</span>,
+              direction: <span className="kbd">{t("library.episodeSheet.kbdDirection")}</span>,
+              pause: <span className="kbd">{"<pause 1.5s>"}</span>,
+              zhTag: <span className="kbd">[笑]</span>,
+              enTag: <span className="kbd">(laugh)</span>,
+            }}
+          />
         </div>
       </div>
     </Sheet>
@@ -140,6 +148,7 @@ export function NewEpisodeSheet({ onClose, showId }: { onClose: () => void; show
 }
 
 function EpisodeRow({ ep }: { ep: Episode }) {
+  const { t } = useTranslation();
   const { go, shows, fail } = useStore();
   const show = shows.find((s) => s.id === ep.show_id);
   return (
@@ -152,17 +161,17 @@ function EpisodeRow({ ep }: { ep: Episode }) {
       <div className="grow">
         <div className="title ellipsis">{ep.title}</div>
         <div className="desc">
-          {ep.line_count ?? 0} 句 · {ep.cast.length} 位角色 {show ? `· ${show.title}` : ""}
+          {t("library.row.summary", { lines: ep.line_count ?? 0, count: ep.cast.length })} {show ? `· ${show.title}` : ""}
         </div>
       </div>
       <StatusBadge status={ep.status} />
       {ep.audio && <Duration ms={ep.audio.duration_ms} />}
       <button
         className="btn icon plain"
-        title="删除单集"
+        title={t("library.row.deleteTitle")}
         onClick={async (e) => {
           e.stopPropagation();
-          if (!confirm(`删除单集“${ep.title}”？已生成的音频也会删除。`)) return;
+          if (!confirm(t("library.row.deleteConfirm", { title: ep.title }))) return;
           await del(`/episodes/${ep.id}`).catch(fail);
         }}
       >
@@ -173,6 +182,7 @@ function EpisodeRow({ ep }: { ep: Episode }) {
 }
 
 export function LibraryView() {
+  const { t } = useTranslation();
   const { shows, episodes, go } = useStore();
   const [newShow, setNewShow] = useState(false);
   const [newEp, setNewEp] = useState(false);
@@ -181,20 +191,20 @@ export function LibraryView() {
   return (
     <>
       <div className="toolbar" data-tauri-drag-region>
-        <h1>节目</h1>
+        <h1>{t("library.title")}</h1>
         <div className="spacer" data-tauri-drag-region />
-        <button className="btn" onClick={() => setNewShow(true)}><Plus size={15} />新建节目</button>
-        <button className="btn primary" onClick={() => setNewEp(true)}><FilePlus2 size={15} />新建单集</button>
+        <button className="btn" onClick={() => setNewShow(true)}><Plus size={15} />{t("library.newShow")}</button>
+        <button className="btn primary" onClick={() => setNewEp(true)}><FilePlus2 size={15} />{t("library.newEpisode")}</button>
       </div>
       <div className="content">
         <div className="page">
           {shows.length === 0 && episodes.length === 0 ? (
             <Empty
               icon={<Library size={30} />}
-              title="开始你的第一档播客"
-              action={<div className="hstack" style={{ justifyContent: "center" }}><button className="btn" onClick={() => setNewShow(true)}>新建节目</button><button className="btn primary" onClick={() => setNewEp(true)}>写一集脚本</button></div>}
+              title={t("library.empty.title")}
+              action={<div className="hstack" style={{ justifyContent: "center" }}><button className="btn" onClick={() => setNewShow(true)}>{t("library.newShow")}</button><button className="btn primary" onClick={() => setNewEp(true)}>{t("library.empty.writeScript")}</button></div>}
             >
-              先在“声音设计”或“声音克隆”中准备主播声音，再用脚本创建单集。BreezeTTS 2 会逐句生成、自动混音并导出 M4A 与字幕。
+              {t("library.empty.body")}
             </Empty>
           ) : (
             <>
@@ -208,7 +218,7 @@ export function LibraryView() {
                       </div>
                       <div>
                         <div style={{ fontWeight: 600 }} className="ellipsis">{s.title}</div>
-                        <div className="muted small">{s.episode_count} 集</div>
+                        <div className="muted small">{t("library.episodeCount", { count: s.episode_count })}</div>
                       </div>
                     </button>
                   ))}
@@ -216,13 +226,13 @@ export function LibraryView() {
               )}
               {recent.length > 0 && (
                 <>
-                  <div className="section-title">最近编辑</div>
+                  <div className="section-title">{t("library.recent")}</div>
                   <div className="group">{recent.map((e) => <EpisodeRow key={e.id} ep={e} />)}</div>
                 </>
               )}
               {standalone.length > 0 && (
                 <>
-                  <div className="section-title">独立单集</div>
+                  <div className="section-title">{t("library.standalone")}</div>
                   <div className="group">{standalone.map((e) => <EpisodeRow key={e.id} ep={e} />)}</div>
                 </>
               )}
@@ -237,6 +247,7 @@ export function LibraryView() {
 }
 
 export function ShowView({ id }: { id: string }) {
+  const { t } = useTranslation();
   const { shows, episodes, go, fail } = useStore();
   const show = shows.find((s) => s.id === id);
   const [edit, setEdit] = useState(false);
@@ -246,14 +257,14 @@ export function ShowView({ id }: { id: string }) {
   return (
     <>
       <div className="toolbar" data-tauri-drag-region>
-        <button className="btn plain sm" onClick={() => go({ name: "library" })}>‹ 节目</button>
+        <button className="btn plain sm" onClick={() => go({ name: "library" })}>{t("library.showView.back")}</button>
         <div className="spacer" data-tauri-drag-region />
-        <button className="btn" onClick={() => setEdit(true)}>编辑</button>
+        <button className="btn" onClick={() => setEdit(true)}>{t("common.edit")}</button>
         <button
           className="btn icon danger"
-          title="删除节目（单集会保留为独立单集）"
+          title={t("library.showView.deleteTitle")}
           onClick={async () => {
-            if (!confirm(`删除节目“${show.title}”？其中的单集会保留为独立单集。`)) return;
+            if (!confirm(t("library.showView.deleteConfirm", { title: show.title }))) return;
             try {
               await del(`/shows/${id}`);
               go({ name: "library" });
@@ -264,7 +275,7 @@ export function ShowView({ id }: { id: string }) {
         >
           <Trash2 size={14} />
         </button>
-        <button className="btn primary" onClick={() => setNewEp(true)}><FilePlus2 size={15} />新建单集</button>
+        <button className="btn primary" onClick={() => setNewEp(true)}><FilePlus2 size={15} />{t("library.newEpisode")}</button>
       </div>
       <div className="content">
         <div className="page">
@@ -273,7 +284,7 @@ export function ShowView({ id }: { id: string }) {
               <div className="t" style={{ fontSize: 22 }}>{show.title}</div>
             </div>
             <div style={{ flex: 1 }}>
-              <div className="muted small" style={{ fontWeight: 600 }}>播客节目</div>
+              <div className="muted small" style={{ fontWeight: 600 }}>{t("library.showView.kind")}</div>
               <div className="ep-title" style={{ fontSize: 30 }}>{show.title}</div>
               <div className="muted">{show.author}</div>
               <p className="muted" style={{ maxWidth: 620 }}>{show.description}</p>
@@ -282,7 +293,7 @@ export function ShowView({ id }: { id: string }) {
           {eps.length ? (
             <div className="group">{eps.map((e) => <EpisodeRow key={e.id} ep={e} />)}</div>
           ) : (
-            <Empty icon={<FilePlus2 size={28} />} title="还没有单集" action={<button className="btn primary" onClick={() => setNewEp(true)}>新建单集</button>} />
+            <Empty icon={<FilePlus2 size={28} />} title={t("library.showView.noEpisodes")} action={<button className="btn primary" onClick={() => setNewEp(true)}>{t("library.newEpisode")}</button>} />
           )}
         </div>
       </div>

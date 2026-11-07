@@ -1,26 +1,24 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Mic, Square, Upload, UserPlus, Wand2 } from "lucide-react";
 import { fileToBase64, isZh, post, type Clip, type Voice } from "../api";
 import { WavRecorder } from "../audio";
+import { defaultContentLang, sampleText, type ContentLang } from "../i18n";
 import { usePlayer, useStore } from "../store";
 import { Segmented, Spinner } from "../ui";
 
-const READ_ALOUD = {
-  zh: "今天的天气很好，阳光透过窗户洒进房间。我泡了一杯茶，打开电脑，准备开始录制新一期的节目。说实话，每次开口之前，我都还是会有一点点紧张。",
-  en: "The weather is lovely today, and sunlight is pouring through the window. I made a cup of tea, opened my laptop, and got ready to record a new episode. Honestly, I still get a little nervous every time.",
-};
-
 export function CloneView() {
+  const { t } = useTranslation();
   const { fail, toast, go, engine } = useStore();
   const player = usePlayer();
   const [source, setSource] = useState<"record" | "file">("record");
-  const [lang, setLang] = useState<"zh" | "en">("zh");
+  const [lang, setLang] = useState<ContentLang>(defaultContentLang);
   const [audio, setAudio] = useState<Blob | null>(null);
   const [fileName, setFileName] = useState("");
   const [transcript, setTranscript] = useState("");
   const [name, setName] = useState("");
   const [instruct, setInstruct] = useState("");
-  const [testText, setTestText] = useState("大家好，这是用我的声音生成的一段测试语音，听起来像我吗？");
+  const [testText, setTestText] = useState(() => sampleText("cloneTest", defaultContentLang()));
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [level, setLevel] = useState(0);
@@ -56,7 +54,7 @@ export function CloneView() {
       };
       tick();
     } catch (e) {
-      fail(`无法访问麦克风：${e instanceof Error ? e.message : e}`);
+      fail(t("clone.micError", { message: e instanceof Error ? e.message : String(e) }));
     }
   };
   const stopRec = async () => {
@@ -66,8 +64,8 @@ export function CloneView() {
     if (!r) return;
     const b = await r.stop();
     setBlob(b);
-    setFileName("录音.wav");
-    if (!transcript.trim()) setTranscript(READ_ALOUD[lang]);
+    setFileName(t("clone.recordingName"));
+    if (!transcript.trim()) setTranscript(sampleText("readAloud", lang));
   };
   const pickFile = (f: File | undefined) => {
     if (!f) return;
@@ -81,7 +79,7 @@ export function CloneView() {
     setBusy("test");
     try {
       const clip = await post<Clip>("/speech", { ...(await body()), text: testText, instruct });
-      player.play({ key: `clip-${clip.id}`, url: clip.url, title: "克隆试听", subtitle: testText });
+      player.play({ key: `clip-${clip.id}`, url: clip.url, title: t("clone.testTitle"), subtitle: testText });
     } catch (e) {
       fail(e);
     } finally {
@@ -92,7 +90,7 @@ export function CloneView() {
     setBusy("save");
     try {
       const v = await post<Voice>("/voices", { ...(await body()), name, instruct, source: source === "record" ? "record" : "clone", language: isZh(transcript) ? "zh" : "en" });
-      toast(`已保存声音“${v.name}”`);
+      toast(t("clone.saved", { name: v.name }));
       go({ name: "voices" });
     } catch (e) {
       fail(e);
@@ -105,10 +103,10 @@ export function CloneView() {
   return (
     <>
       <div className="toolbar" data-tauri-drag-region>
-        <h1>声音克隆</h1>
-        <span className="sub">3–20 秒清晰人声 + 准确逐字稿</span>
+        <h1>{t("clone.title")}</h1>
+        <span className="sub">{t("clone.subtitle")}</span>
         <div className="spacer" data-tauri-drag-region />
-        <Segmented value={source} onChange={setSource} options={[{ value: "record", label: <><Mic size={12} /> 跟读录音</> }, { value: "file", label: <><Upload size={12} /> 导入音频</> }]} />
+        <Segmented value={source} onChange={setSource} options={[{ value: "record", label: <><Mic size={12} /> {t("clone.sourceRecord")}</> }, { value: "file", label: <><Upload size={12} /> {t("clone.sourceFile")}</> }]} />
       </div>
       <div className="content">
         <div className="page" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.1fr) minmax(0, 1fr)", gap: 20, alignItems: "start" }}>
@@ -116,21 +114,21 @@ export function CloneView() {
             {source === "record" ? (
               <div className="card pad vstack">
                 <div className="hstack">
-                  <span className="label" style={{ flex: 1 }}>请用自然的语气朗读下面这段话</span>
-                  <Segmented value={lang} onChange={(l) => { setLang(l); if (!audio) setTranscript(""); }} options={[{ value: "zh", label: "中文" }, { value: "en", label: "EN" }]} />
+                  <span className="label" style={{ flex: 1 }}>{t("clone.readPrompt")}</span>
+                  <Segmented value={lang} onChange={(l) => { setLang(l); if (!audio) setTranscript(""); }} options={[{ value: "zh", label: t("common.contentLanguage.zh") }, { value: "en", label: t("common.contentLanguage.en") }]} />
                 </div>
-                <div style={{ fontSize: 17, lineHeight: 1.75, padding: "6px 2px", fontFamily: "var(--font-display)" }}>{READ_ALOUD[lang]}</div>
+                <div style={{ fontSize: 17, lineHeight: 1.75, padding: "6px 2px", fontFamily: "var(--font-display)" }}>{sampleText("readAloud", lang)}</div>
                 <div className="hstack">
                   {recording ? (
-                    <button className="btn lg" onClick={stopRec}><Square size={13} fill="var(--red)" color="var(--red)" />完成</button>
+                    <button className="btn lg" onClick={stopRec}><Square size={13} fill="var(--red)" color="var(--red)" />{t("clone.finish")}</button>
                   ) : (
-                    <button className="btn lg primary" onClick={startRec}><Mic size={16} />{audio ? "重新录制" : "开始录音"}</button>
+                    <button className="btn lg primary" onClick={startRec}><Mic size={16} />{audio ? t("clone.rerecord") : t("clone.record")}</button>
                   )}
                   {recording && <span className="rec-dot" />}
                   {recording && <span className="mono">{elapsed.toFixed(1)}s</span>}
                   <div className="meter" style={{ flex: 1 }}><div style={{ width: `${Math.min(100, level * 140)}%` }} /></div>
                 </div>
-                <div className="hint">在安静的环境中录制，距离麦克风约一拳，避免音乐和回声。录音结束后逐字稿会自动填入，如有口误请修改。</div>
+                <div className="hint">{t("clone.recordHint")}</div>
               </div>
             ) : (
               <label
@@ -140,20 +138,20 @@ export function CloneView() {
                 onDrop={(e) => { e.preventDefault(); setOver(false); pickFile(e.dataTransfer.files[0]); }}
               >
                 <Upload size={26} style={{ marginBottom: 8, color: "var(--accent)" }} />
-                <div style={{ fontWeight: 600, color: "var(--fg)" }}>拖入音频文件，或点击选择</div>
-                <div className="hint">支持 WAV / MP3 / M4A / AIFF / FLAC，会自动转换为 24 kHz 单声道</div>
+                <div style={{ fontWeight: 600, color: "var(--fg)" }}>{t("clone.drop")}</div>
+                <div className="hint">{t("clone.dropHint")}</div>
                 <input type="file" accept="audio/*,.wav,.mp3,.m4a,.aiff,.flac" hidden onChange={(e) => pickFile(e.target.files?.[0])} />
               </label>
             )}
             {audio && (
               <div className="card pad vstack">
                 <div className="hstack">
-                  <span className="label" style={{ flex: 1 }}>参考音频 · {fileName}</span>
+                  <span className="label" style={{ flex: 1 }}>{t("clone.reference", { file: fileName })}</span>
                 </div>
                 <audio src={audioUrl.current} controls style={{ width: "100%", height: 34 }} />
                 <div className="field">
-                  <label>逐字稿（必须与音频内容一字不差）</label>
-                  <textarea className="textarea" style={{ minHeight: 80 }} value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="把参考音频里说的每一个字写下来…" />
+                  <label>{t("clone.transcript")}</label>
+                  <textarea className="textarea" style={{ minHeight: 80 }} value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder={t("clone.transcriptPlaceholder")} />
                 </div>
               </div>
             )}
@@ -161,29 +159,29 @@ export function CloneView() {
           <div className="vstack">
             <div className="card pad vstack">
               <div className="field">
-                <label>名称（也是脚本里的角色名）</label>
-                <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="例如：我自己 / 嘉宾 A" />
+                <label>{t("clone.name")}</label>
+                <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("clone.namePlaceholder")} />
               </div>
               <div className="field">
-                <label>默认演绎指导（可选）</label>
-                <input className="input" value={instruct} onChange={(e) => setInstruct(e.target.value)} placeholder="例如：语气轻松自然，像和朋友聊天" />
-                <div className="hint">克隆保留音色，指导控制情绪、语气与节奏（Voice Direction）。</div>
+                <label>{t("clone.instruct")}</label>
+                <input className="input" value={instruct} onChange={(e) => setInstruct(e.target.value)} placeholder={t("clone.instructPlaceholder")} />
+                <div className="hint">{t("clone.instructHint")}</div>
               </div>
               <div className="field">
-                <label>试听文本</label>
+                <label>{t("clone.testText")}</label>
                 <textarea className="textarea" style={{ minHeight: 64 }} value={testText} onChange={(e) => setTestText(e.target.value)} />
               </div>
               <label className="hstack small" style={{ alignItems: "flex-start" }}>
                 <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: 3 }} />
-                <span className="muted">我确认这是我本人的声音，或已获得声音所有者的明确授权，不会用于冒充、欺诈等用途。</span>
+                <span className="muted">{t("clone.consent")}</span>
               </label>
               <div className="hstack">
                 <button className="btn" disabled={!ready || !!busy || engine?.state !== "ready"} onClick={test}>
-                  {busy === "test" ? <Spinner /> : <Wand2 size={14} />}试听克隆效果
+                  {busy === "test" ? <Spinner /> : <Wand2 size={14} />}{t("clone.test")}
                 </button>
                 <span style={{ flex: 1 }} />
                 <button className="btn primary" disabled={!ready || !name.trim() || !!busy} onClick={save}>
-                  {busy === "save" ? <Spinner /> : <UserPlus size={14} />}保存声音
+                  {busy === "save" ? <Spinner /> : <UserPlus size={14} />}{t("clone.save")}
                 </button>
               </div>
             </div>

@@ -278,7 +278,7 @@ pub async fn run_render(state: Shared, task: RenderTask) {
     let cancel = state.cancel_flag(&job_id);
     state.update_job(&job_id, |j| {
         j.status = "running".into();
-        j.message = "准备中".into();
+        j.set_message("job.preparing", json!({}), "准备中");
     });
     let result: Result<Episode> = async {
         let ep = episode(&state, &episode_id)?;
@@ -299,7 +299,7 @@ pub async fn run_render(state: Shared, task: RenderTask) {
             }
             state.update_job(&job_id, |j| {
                 j.progress = i as f64 / total * 0.95;
-                j.message = format!("正在生成第 {}/{} 句 · {}", i + 1, targets.len(), line.speaker);
+                j.set_message("job.generating", json!({"index": i + 1, "total": targets.len(), "speaker": line.speaker}), format!("正在生成第 {}/{} 句 · {}", i + 1, targets.len(), line.speaker));
                 j.result = Some(json!({"line_id": line.id}));
             });
             let ep_now = episode(&state, &episode_id)?;
@@ -308,7 +308,7 @@ pub async fn run_render(state: Shared, task: RenderTask) {
         }
         state.update_job(&job_id, |j| {
             j.progress = 0.97;
-            j.message = "正在混音".into();
+            j.set_message("job.mixing", json!({}), "正在混音");
         });
         let mut ep = episode(&state, &episode_id)?;
         if ep.lines.iter().any(|l| line_is_stale(&state, &ep, l)) && line_ids.is_none() {
@@ -327,7 +327,7 @@ pub async fn run_render(state: Shared, task: RenderTask) {
             state.update_job(&job_id, |j| {
                 j.status = "succeeded".into();
                 j.progress = 1.0;
-                j.message = "完成".into();
+                j.set_message("job.done", json!({}), "完成");
                 j.result = Some(json!({"episode_id": ep.id, "duration_ms": ep.audio.as_ref().map(|a| a.duration_ms)}));
             });
         }
@@ -340,7 +340,7 @@ pub async fn run_render(state: Shared, task: RenderTask) {
             }
             state.update_job(&job_id, |j| {
                 j.status = if cancelled { "cancelled" } else { "failed" }.into();
-                j.message = if cancelled { "已取消".into() } else { "失败".into() };
+                if cancelled { j.set_message("job.cancelled", json!({}), "已取消") } else { j.set_message("job.failed", json!({}), "失败") }
                 j.error = (!cancelled).then_some(msg);
             });
         }

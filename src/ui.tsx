@@ -1,6 +1,9 @@
 import { useEffect, useState, type ReactNode, type RefObject } from "react";
-import { ChevronDown, Dices, Lock, Pause, Play, Unlock } from "lucide-react";
+import { ChevronDown, Dices, Languages, Lock, Pause, Play, Unlock } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { VOCAL_EVENTS, fmtMs, mediaUrl, type Params, type Voice } from "./api";
+import { LANGUAGES, type LanguageCode } from "./i18n/languages";
+import { currentLanguage, setLanguage } from "./i18n";
 import { peaksOf } from "./audio";
 import { usePlayer, type Track } from "./store";
 
@@ -57,13 +60,14 @@ export function coverStyle(color: string) {
 }
 
 export function PlayButton({ track, size = "sm" }: { track: Track; size?: "sm" | "md" }) {
+  const { t } = useTranslation();
   const p = usePlayer();
   const active = p.track?.key === track.key;
   const on = active && p.playing;
   return (
     <button
       className={`btn icon ${size === "sm" ? "plain" : ""}`}
-      title={on ? "暂停" : "播放"}
+      title={on ? t("common.pause") : t("common.play")}
       onClick={(e) => {
         e.stopPropagation();
         if (active) p.toggle();
@@ -95,6 +99,7 @@ export function Waveform({ url, color, version }: { url: string; color?: string;
 
 /** Inserts a vocal-event tag at the caret of the referenced textarea. */
 export function EventChips({ target, value, onChange, lang }: { target: RefObject<HTMLTextAreaElement | null>; value: string; onChange: (v: string) => void; lang: "zh" | "en" }) {
+  const { t } = useTranslation();
   const insert = (tag: string) => {
     const el = target.current;
     const pos = el ? el.selectionStart : value.length;
@@ -112,7 +117,7 @@ export function EventChips({ target, value, onChange, lang }: { target: RefObjec
   return (
     <div className="chips">
       {VOCAL_EVENTS[lang].map((e) => (
-        <button key={e.tag} className="chip" onClick={() => insert(e.tag)} title={`插入 ${e.tag}`}>
+        <button key={e.tag} className="chip" onClick={() => insert(e.tag)} title={t("ui.insertTag", { tag: e.tag })}>
           {e.tag}
         </button>
       ))}
@@ -120,15 +125,16 @@ export function EventChips({ target, value, onChange, lang }: { target: RefObjec
   );
 }
 
-export function VoiceSelect({ voices, value, onChange, allowNone, noneLabel = "不使用声音（仅描述）" }: { voices: Voice[]; value: string | null; onChange: (id: string | null) => void; allowNone?: boolean; noneLabel?: string }) {
+export function VoiceSelect({ voices, value, onChange, allowNone, noneLabel }: { voices: Voice[]; value: string | null; onChange: (id: string | null) => void; allowNone?: boolean; noneLabel?: string }) {
+  const { t } = useTranslation();
   return (
     <select className="input" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}>
-      {allowNone && <option value="">{noneLabel}</option>}
-      {!allowNone && !value && <option value="">选择声音…</option>}
+      {allowNone && <option value="">{noneLabel ?? t("ui.noVoice")}</option>}
+      {!allowNone && !value && <option value="">{t("ui.chooseVoice")}</option>}
       {voices.map((v) => (
         <option key={v.id} value={v.id}>
           {v.name}
-          {v.has_reference ? "" : "（描述型）"}
+          {v.has_reference ? "" : t("ui.descriptionVoice")}
         </option>
       ))}
     </select>
@@ -155,6 +161,7 @@ function Slider({ label, hint, value, min, max, step, onChange, placeholder }: {
 
 /** Every BreezeTTS 2 request option. Unset fields fall back to the model defaults. */
 export function ParamsPanel({ value, onChange, defaultOpen = false, autoGuidance = true }: { value: Params; onChange: (p: Params) => void; defaultOpen?: boolean; autoGuidance?: boolean }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(defaultOpen);
   const set = <K extends keyof Params>(k: K, v: Params[K]) => {
     const next = { ...value };
@@ -168,46 +175,46 @@ export function ParamsPanel({ value, onChange, defaultOpen = false, autoGuidance
     <div className="card" style={{ padding: open ? 16 : 0 }}>
       <button className="btn plain" style={{ width: "100%", justifyContent: "space-between", height: open ? 26 : 42, padding: open ? 0 : "0 16px", borderRadius: 14 }} onClick={() => setOpen(!open)}>
         <span className="hstack">
-          生成参数 {changed > 0 && <span className="badge accent">{changed} 项自定义</span>}
+          {t("ui.params.title")} {changed > 0 && <span className="badge accent">{t("ui.params.customized", { count: changed })}</span>}
         </span>
         <ChevronDown size={15} style={{ transform: open ? "rotate(180deg)" : undefined, transition: "transform .2s" }} />
       </button>
       {open && (
         <div className="grid cols-2" style={{ marginTop: 14, gap: 16 }}>
-          <Slider label="指令强度 guidance_scale" hint={autoGuidance ? "留空为自动：有描述/指导时 4，否则 1。越高越贴合描述，生成约慢一倍" : "越高越贴合描述"} value={value.guidance_scale} min={0} max={8} step={0.5} placeholder="auto" onChange={(v) => set("guidance_scale", v)} />
-          <Slider label="表现力 temperature" hint="低：稳定克制；高：起伏更大（默认 0.9）" value={value.temperature} min={0.1} max={1.5} step={0.05} placeholder="0.9" onChange={(v) => set("temperature", v)} />
-          <Slider label="声学细节 depth_temperature" hint="深度解码器采样温度（默认 0.9）" value={value.depth_temperature} min={0.1} max={1.5} step={0.05} placeholder="0.9" onChange={(v) => set("depth_temperature", v)} />
-          <Slider label="top_p" hint="核采样阈值，1 = 关闭" value={value.top_p} min={0.05} max={1} step={0.05} placeholder="1" onChange={(v) => set("top_p", v)} />
-          <Slider label="top_k" hint="候选数上限，0 = 关闭（默认 50）" value={value.top_k} min={0} max={200} step={1} placeholder="50" onChange={(v) => set("top_k", v)} />
-          <Slider label="最长帧数 max_tokens" hint="每段最长声学帧（12.5 帧 ≈ 1 秒，默认 1500）" value={value.max_tokens} min={100} max={3000} step={50} placeholder="1500" onChange={(v) => set("max_tokens", v)} />
+          <Slider label={t("ui.params.guidance.label")} hint={autoGuidance ? t("ui.params.guidance.hintAuto") : t("ui.params.guidance.hint")} value={value.guidance_scale} min={0} max={8} step={0.5} placeholder="auto" onChange={(v) => set("guidance_scale", v)} />
+          <Slider label={t("ui.params.temperature.label")} hint={t("ui.params.temperature.hint")} value={value.temperature} min={0.1} max={1.5} step={0.05} placeholder="0.9" onChange={(v) => set("temperature", v)} />
+          <Slider label={t("ui.params.depthTemperature.label")} hint={t("ui.params.depthTemperature.hint")} value={value.depth_temperature} min={0.1} max={1.5} step={0.05} placeholder="0.9" onChange={(v) => set("depth_temperature", v)} />
+          <Slider label="top_p" hint={t("ui.params.topP.hint")} value={value.top_p} min={0.05} max={1} step={0.05} placeholder="1" onChange={(v) => set("top_p", v)} />
+          <Slider label="top_k" hint={t("ui.params.topK.hint")} value={value.top_k} min={0} max={200} step={1} placeholder="50" onChange={(v) => set("top_k", v)} />
+          <Slider label={t("ui.params.maxTokens.label")} hint={t("ui.params.maxTokens.hint")} value={value.max_tokens} min={100} max={3000} step={50} placeholder="1500" onChange={(v) => set("max_tokens", v)} />
           <div className="field">
-            <label>随机种子 seed</label>
+            <label>{t("ui.params.seed.label")}</label>
             <div className="hstack">
-              <input className="input num" style={{ flex: 1, textAlign: "left" }} placeholder="每次随机" value={value.seed ?? ""} onChange={(e) => set("seed", e.target.value === "" ? undefined : Math.max(0, Math.floor(Number(e.target.value))))} />
-              <button className="btn icon" title="随机一个种子" onClick={() => set("seed", Math.floor(Math.random() * 2 ** 31))}>
+              <input className="input num" style={{ flex: 1, textAlign: "left" }} placeholder={t("ui.params.seed.placeholder")} value={value.seed ?? ""} onChange={(e) => set("seed", e.target.value === "" ? undefined : Math.max(0, Math.floor(Number(e.target.value))))} />
+              <button className="btn icon" title={t("ui.params.seed.roll")} onClick={() => set("seed", Math.floor(Math.random() * 2 ** 31))}>
                 <Dices size={15} />
               </button>
-              <button className="btn icon" title={seedLocked ? "解锁（每次随机）" : "已解锁"} onClick={() => set("seed", undefined)} disabled={!seedLocked}>
+              <button className="btn icon" title={seedLocked ? t("ui.params.seed.unlock") : t("ui.params.seed.unlocked")} onClick={() => set("seed", undefined)} disabled={!seedLocked}>
                 {seedLocked ? <Lock size={14} /> : <Unlock size={14} />}
               </button>
             </div>
-            <div className="hint">固定种子 + 相同输入 = 完全相同的一条</div>
+            <div className="hint">{t("ui.params.seed.hint")}</div>
           </div>
           <div className="field">
-            <label>长文本切分</label>
+            <label>{t("ui.params.chunk.label")}</label>
             <div className="hstack">
               <input className="input num" style={{ width: 80 }} placeholder="600" value={value.text_chunk_size ?? ""} onChange={(e) => set("text_chunk_size", e.target.value === "" ? undefined : Number(e.target.value))} />
               <select className="input" value={value.text_chunk_mode ?? ""} onChange={(e) => set("text_chunk_mode", e.target.value || undefined)}>
-                <option value="">默认</option>
-                <option value="tag_aware">保留标签 tag_aware</option>
-                <option value="endline">按换行 endline</option>
+                <option value="">{t("ui.params.chunk.default")}</option>
+                <option value="tag_aware">{t("ui.params.chunk.tagAware")}</option>
+                <option value="endline">{t("ui.params.chunk.endline")}</option>
               </select>
             </div>
-            <div className="hint">每段最多字符数与切分方式</div>
+            <div className="hint">{t("ui.params.chunk.hint")}</div>
           </div>
           {changed > 0 && (
             <div style={{ gridColumn: "1 / -1" }}>
-              <button className="btn sm" onClick={() => onChange({})}>全部恢复默认</button>
+              <button className="btn sm" onClick={() => onChange({})}>{t("ui.params.resetAll")}</button>
             </div>
           )}
         </div>
@@ -228,5 +235,21 @@ export function Empty({ icon, title, children, action }: { icon: ReactNode; titl
       {children && <p>{children}</p>}
       {action}
     </div>
+  );
+}
+
+/** Lists every registered UI language; the choice is persisted by `setLanguage`. */
+export function LanguageSwitcher() {
+  const { t } = useTranslation(); // re-renders on language change
+  const active = currentLanguage();
+  return (
+    <label className="lang-switch" title={t("app.languageSwitcher.label")}>
+      <Languages size={14} />
+      <select aria-label={t("app.languageSwitcher.label")} value={active} onChange={(e) => void setLanguage(e.target.value as LanguageCode)}>
+        {LANGUAGES.map((l) => (
+          <option key={l.code} value={l.code}>{l.name}</option>
+        ))}
+      </select>
+    </label>
   );
 }

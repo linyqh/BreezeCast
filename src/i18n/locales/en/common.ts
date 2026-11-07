@@ -1,0 +1,16 @@
+export default {
+  cancel: "Cancel",
+  save: "Save",
+  create: "Create",
+  delete: "Delete",
+  edit: "Edit",
+  close: "Close",
+  done: "Done",
+  play: "Play",
+  pause: "Pause",
+  stop: "Stop",
+  copy: "Copy",
+  none: "—",
+  language: "Language",
+  contentLanguage: { zh: "中文", en: "English" },
+};

@@ -206,11 +206,32 @@ pub struct Job {
     pub target_id: String,
     pub status: String,
     pub progress: f64,
+    /// Human-readable status in the backend's default language (kept for API clients).
     pub message: String,
+    /// Stable i18n key + interpolation args so UIs can localise `message`.
+    #[serde(default)]
+    pub message_key: Option<String>,
+    #[serde(default)]
+    pub message_args: Option<Value>,
     pub error: Option<String>,
     pub result: Option<Value>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+impl Job {
+    pub fn set_message(&mut self, key: &str, args: Value, text: impl Into<String>) {
+        self.message = text.into();
+        self.message_key = Some(key.into());
+        self.message_args = Some(args);
+    }
+
+    /// Language-neutral message (e.g. a progress counter) with no translation key.
+    pub fn set_text(&mut self, text: impl Into<String>) {
+        self.message = text.into();
+        self.message_key = None;
+        self.message_args = None;
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

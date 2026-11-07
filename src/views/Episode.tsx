@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { ArrowDown, ArrowUp, Download, FileText, Lock, MoreHorizontal, Play, Plus, RefreshCw, Settings2, Sparkles, Square, Trash2, Unlock, Wand2 } from "lucide-react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { del, get, isZh, patch, post, type Episode, type Line, type Params, type Voice } from "../api";
+import { del, get, isZh, jobMessage, patch, post, type Episode, type Line, type Params, type Voice } from "../api";
+import { DIRECTION_PRESETS } from "../i18n/content";
 import { usePlayer, useStore } from "../store";
 import { Avatar, Duration, EventChips, ParamsPanel, PlayButton, Sheet, Spinner, coverStyle } from "../ui";
 import { StatusBadge } from "./Library";
 
-const DIRECTION_PRESETS_ZH = ["热情开场", "轻松闲聊", "惊讶", "若有所思，语速放慢", "压低声音，像在说秘密", "激动，语速加快", "严肃认真", "温柔安慰", "忍不住笑"];
-const DIRECTION_PRESETS_EN = ["Warm, welcoming opener", "Casual and relaxed", "Surprised", "Thoughtful, slower pace", "Whispering, secretive", "Excited, faster pace", "Serious and measured", "Gentle and reassuring"];
 
 function toScript(ep: Episode): string {
   return ep.lines
@@ -20,6 +20,7 @@ function toScript(ep: Episode): string {
 }
 
 export function EpisodeView({ id }: { id: string }) {
+  const { t } = useTranslation();
   const { go, fail, toast, voices, shows, episodeVersion, jobs } = useStore();
   const player = usePlayer();
   const [ep, setEp] = useState<Episode | null>(null);
@@ -60,7 +61,7 @@ export function EpisodeView({ id }: { id: string }) {
   const renderAll = async (force = false) => {
     try {
       await post(`/episodes/${id}/render`, { force });
-      toast(force ? "已开始全部重新生成" : "已加入生成队列");
+      toast(force ? t("episode.render.queuedForce") : t("episode.render.queued"));
     } catch (e) {
       fail(e);
     }
@@ -90,7 +91,7 @@ export function EpisodeView({ id }: { id: string }) {
     setExporting(true);
     try {
       const r = await post<{ audio_path: string }>(`/episodes/${id}/export`, { format });
-      toast(`已导出到 ${r.audio_path}`);
+      toast(t("episode.exported", { path: r.audio_path }));
       await revealItemInDir(r.audio_path);
     } catch (e) {
       fail(e);
@@ -109,23 +110,23 @@ export function EpisodeView({ id }: { id: string }) {
   return (
     <>
       <div className="toolbar" data-tauri-drag-region>
-        <button className="btn plain sm" onClick={() => go(show ? { name: "show", id: show.id } : { name: "library" })}>‹ {show?.title ?? "节目"}</button>
+        <button className="btn plain sm" onClick={() => go(show ? { name: "show", id: show.id } : { name: "library" })}>{t("episode.back", { title: show?.title ?? t("library.title") })}</button>
         <StatusBadge status={job ? "rendering" : ep.status} />
         <div className="spacer" data-tauri-drag-region />
         <div className="seg">
-          <button className={mode === "lines" ? "on" : ""} onClick={() => setMode("lines")}>逐句</button>
-          <button className={mode === "script" ? "on" : ""} onClick={() => setMode("script")}>脚本</button>
+          <button className={mode === "lines" ? "on" : ""} onClick={() => setMode("lines")}>{t("episode.modeLines")}</button>
+          <button className={mode === "script" ? "on" : ""} onClick={() => setMode("script")}>{t("episode.modeScript")}</button>
         </div>
-        <button className="btn icon" title="单集生成参数" onClick={() => setSettings(true)}><Settings2 size={15} /></button>
-        <button className="btn" disabled={!ep.audio || exporting} onClick={() => doExport("m4a")} title="导出 M4A + SRT 字幕 + 章节">
-          {exporting ? <Spinner /> : <Download size={15} />}导出
+        <button className="btn icon" title={t("episode.settingsTitle")} onClick={() => setSettings(true)}><Settings2 size={15} /></button>
+        <button className="btn" disabled={!ep.audio || exporting} onClick={() => doExport("m4a")} title={t("episode.exportTitle")}>
+          {exporting ? <Spinner /> : <Download size={15} />}{t("episode.export")}
         </button>
         {ep.audio && ep.status === "rendered" ? (
-          <button className="btn primary" onClick={playEpisode}><Play size={14} fill="currentColor" />播放</button>
+          <button className="btn primary" onClick={playEpisode}><Play size={14} fill="currentColor" />{t("common.play")}</button>
         ) : (
           <button className="btn primary" disabled={!!job || missingCast.length > 0 || ep.lines.length === 0} onClick={() => renderAll()}>
             {job ? <Spinner /> : <Sparkles size={15} />}
-            {job ? "生成中" : staleCount ? `生成 ${staleCount} 句并混音` : "混音"}
+            {job ? t("episode.render.rendering") : staleCount ? t("episode.render.renderStale", { count: staleCount }) : t("episode.render.mix")}
           </button>
         )}
       </div>
@@ -133,25 +134,25 @@ export function EpisodeView({ id }: { id: string }) {
         <div className="page" style={{ maxWidth: 900 }}>
           <div className="ep-head">
             <div className="cover" style={coverStyle(show?.color ?? "#8E8E93")}>
-              <div className="t" style={{ fontSize: 15 }}>{show?.title ?? "独立单集"}</div>
+              <div className="t" style={{ fontSize: 15 }}>{show?.title ?? t("episode.standaloneCover")}</div>
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <input className="ep-title" defaultValue={ep.title} key={ep.title} onBlur={(e) => e.target.value !== ep.title && update({ title: e.target.value })} />
               <input
                 className="input"
                 style={{ background: "none", boxShadow: "none", padding: 0, height: 22, color: "var(--fg-2)" }}
-                placeholder="添加简介…"
+                placeholder={t("episode.descriptionPlaceholder")}
                 defaultValue={ep.description}
                 key={`d-${ep.description}`}
                 onBlur={(e) => e.target.value !== ep.description && update({ description: e.target.value })}
               />
               <div className="hstack muted small" style={{ marginTop: 8 }}>
-                <span>{ep.lines.length} 句</span>·<span>{ep.audio ? <Duration ms={ep.audio.duration_ms} /> : totalMs ? `约 ${Math.round(totalMs / 1000)} 秒` : "未生成"}</span>
-                {staleCount > 0 && <span className="badge orange">{staleCount} 句待生成</span>}
+                <span>{t("episode.lineCount", { count: ep.lines.length })}</span>·<span>{ep.audio ? <Duration ms={ep.audio.duration_ms} /> : totalMs ? t("episode.estimate", { seconds: Math.round(totalMs / 1000) }) : t("episode.notRendered")}</span>
+                {staleCount > 0 && <span className="badge orange">{t("episode.stalePending", { count: staleCount })}</span>}
                 {ep.audio && (
                   <>
-                    · <button className="btn sm plain" onClick={() => doExport("wav")}>导出 WAV</button>
-                    <button className="btn sm plain" onClick={() => renderAll(true)} disabled={!!job}>全部重录</button>
+                    · <button className="btn sm plain" onClick={() => doExport("wav")}>{t("episode.exportWav")}</button>
+                    <button className="btn sm plain" onClick={() => renderAll(true)} disabled={!!job}>{t("episode.rerenderAll")}</button>
                   </>
                 )}
               </div>
@@ -162,16 +163,16 @@ export function EpisodeView({ id }: { id: string }) {
             <div className="card pad" style={{ marginBottom: 14 }}>
               <div className="hstack" style={{ marginBottom: 8 }}>
                 <Spinner />
-                <span style={{ flex: 1 }}>{job.message}</span>
+                <span style={{ flex: 1 }}>{jobMessage(job)}</span>
                 <span className="muted small">{Math.round(job.progress * 100)}%</span>
-                <button className="btn sm" onClick={() => post(`/jobs/${job.id}/cancel`).catch(fail)}><Square size={11} fill="currentColor" />停止</button>
+                <button className="btn sm" onClick={() => post(`/jobs/${job.id}/cancel`).catch(fail)}><Square size={11} fill="currentColor" />{t("common.stop")}</button>
               </div>
               <div className="progress"><div style={{ width: `${job.progress * 100}%` }} /></div>
             </div>
           )}
-          {ep.failed && !job && <div className="card pad err" style={{ marginBottom: 14 }}>上次生成失败：{ep.failed}</div>}
+          {ep.failed && !job && <div className="card pad err" style={{ marginBottom: 14 }}>{t("episode.lastFailed", { error: ep.failed })}</div>}
 
-          <div className="label" style={{ marginBottom: 8 }}>角色与声音</div>
+          <div className="label" style={{ marginBottom: 8 }}>{t("episode.cast.title")}</div>
           <div className="cast" style={{ marginBottom: 22 }}>
             {speakers.map((s) => {
               const v = voiceOf(s);
@@ -180,14 +181,14 @@ export function EpisodeView({ id }: { id: string }) {
                   <Avatar voice={v} name={s} size="sm" />
                   <span style={{ fontWeight: 600, fontSize: 12.5 }}>{s}</span>
                   <select value={v?.id ?? ""} onChange={(e) => setCast(s, e.target.value || null)}>
-                    <option value="">选择声音…</option>
+                    <option value="">{t("episode.cast.choose")}</option>
                     {voices.map((vv) => <option key={vv.id} value={vv.id}>{vv.name}</option>)}
                   </select>
                 </div>
               );
             })}
             {voices.length === 0 && (
-              <button className="btn sm" onClick={() => go({ name: "design" })}><Wand2 size={13} />先去设计一个声音</button>
+              <button className="btn sm" onClick={() => go({ name: "design" })}><Wand2 size={13} />{t("episode.cast.designFirst")}</button>
             )}
           </div>
 
@@ -214,16 +215,16 @@ export function EpisodeView({ id }: { id: string }) {
               <button
                 className="btn"
                 style={{ alignSelf: "flex-start", marginTop: 6 }}
-                onClick={async () => setEp(await post<Episode>(`/episodes/${id}/lines`, { speaker: speakers[ep.lines.length % Math.max(1, speakers.length)] ?? "主持人", text: "" }))}
+                onClick={async () => setEp(await post<Episode>(`/episodes/${id}/lines`, { speaker: speakers[ep.lines.length % Math.max(1, speakers.length)] ?? t("episode.defaultHost"), text: "" }))}
               >
-                <Plus size={14} />添加一句
+                <Plus size={14} />{t("episode.addLine")}
               </button>
             </div>
           )}
         </div>
       </div>
       {settings && (
-        <Sheet title="单集生成参数" subtitle="对本集所有台词生效；声音和单句上的设置优先级更高。" onClose={() => setSettings(false)} width={680} actions={<button className="btn primary" onClick={() => setSettings(false)}>完成</button>}>
+        <Sheet title={t("episode.settingsSheet.title")} subtitle={t("episode.settingsSheet.subtitle")} onClose={() => setSettings(false)} width={680} actions={<button className="btn primary" onClick={() => setSettings(false)}>{t("common.done")}</button>}>
           <ParamsPanel value={ep.params} onChange={(params) => void update({ params })} defaultOpen />
         </Sheet>
       )}
@@ -232,6 +233,7 @@ export function EpisodeView({ id }: { id: string }) {
 }
 
 function ScriptEditor({ ep, onApply }: { ep: Episode; onApply: (s: string) => void }) {
+  const { t } = useTranslation();
   const original = useMemo(() => toScript(ep), [ep]);
   const [text, setText] = useState(original);
   useEffect(() => setText(original), [original]);
@@ -239,9 +241,11 @@ function ScriptEditor({ ep, onApply }: { ep: Episode; onApply: (s: string) => vo
     <div className="vstack">
       <textarea className="textarea mono" style={{ minHeight: 420, fontSize: 13, lineHeight: 1.7 }} value={text} onChange={(e) => setText(e.target.value)} />
       <div className="hstack">
-        <span className="hint" style={{ flex: 1 }}>未改动的句子会保留已生成的音频。<span className="kbd">{"角色 {指导}: 台词"}</span> <span className="kbd">{"<pause 1s>"}</span></span>
-        <button className="btn" disabled={text === original} onClick={() => setText(original)}>还原</button>
-        <button className="btn primary" disabled={text === original} onClick={() => onApply(text)}>应用脚本</button>
+        <span className="hint" style={{ flex: 1 }}>
+          <Trans i18nKey="episode.script.hint" components={{ direction: <span className="kbd">{t("episode.script.kbdDirection")}</span>, pause: <span className="kbd">{"<pause 1s>"}</span> }} />
+        </span>
+        <button className="btn" disabled={text === original} onClick={() => setText(original)}>{t("episode.script.revert")}</button>
+        <button className="btn primary" disabled={text === original} onClick={() => onApply(text)}>{t("episode.script.apply")}</button>
       </div>
     </div>
   );
@@ -262,6 +266,7 @@ type LineProps = {
 };
 
 function LineCard({ ep, line, index, speakers, voice, busy, playing, onPatch, onRetake, onDelete, onInsert }: LineProps) {
+  const { t } = useTranslation();
   const [text, setText] = useState(line.text);
   const [direction, setDirection] = useState(line.direction);
   const [focused, setFocused] = useState(false);
@@ -294,37 +299,37 @@ function LineCard({ ep, line, index, speakers, voice, busy, playing, onPatch, on
           }
         }}
       >
-        <div className={`status ${status}`} title={status === "stale" ? "需要生成" : status === "busy" ? "生成中" : "已生成"} />
+        <div className={`status ${status}`} title={status === "stale" ? t("episode.line.statusStale") : status === "busy" ? t("episode.line.statusBusy") : t("episode.line.statusDone")} />
         <Avatar voice={voice} name={line.speaker} />
         <div style={{ minWidth: 0 }}>
           <div className="who">
             <select
               value={line.speaker}
               onChange={(e) => {
-                const v = e.target.value === "__new" ? prompt("新角色名称")?.trim() : e.target.value;
+                const v = e.target.value === "__new" ? prompt(t("episode.line.newSpeakerPrompt"))?.trim() : e.target.value;
                 if (v) void onPatch({ speaker: v });
               }}
               style={{ border: 0, background: "none", font: "inherit", fontWeight: 650, color: voice?.color ?? "var(--fg)", outline: "none", padding: 0 }}
             >
               {speakers.map((s) => <option key={s} value={s}>{s}</option>)}
-              <option value="__new">＋ 新角色…</option>
+              <option value="__new">{t("episode.line.newSpeaker")}</option>
             </select>
             <span className="muted" style={{ fontWeight: 400 }}>#{index + 1}</span>
             {line.audio && <Duration ms={line.audio.duration_ms} />}
-            {seedLocked && <span className="badge" title="已锁定这一条（固定种子）"><Lock size={9} />&nbsp;锁定</span>}
+            {seedLocked && <span className="badge" title={t("episode.line.lockedTitle")}><Lock size={9} />&nbsp;{t("episode.line.locked")}</span>}
           </div>
-          <textarea ref={ta} value={text} rows={1} placeholder="输入台词…" onChange={(e) => setText(e.target.value)} />
-          <input className="dir" value={direction} placeholder={voice?.has_reference ? "＋ 演绎指导（语气、情绪、语速）" : "＋ 演绎指导（会叠加在声音描述之后）"} onChange={(e) => setDirection(e.target.value)} />
+          <textarea ref={ta} value={text} rows={1} placeholder={t("episode.line.textPlaceholder")} onChange={(e) => setText(e.target.value)} />
+          <input className="dir" value={direction} placeholder={voice?.has_reference ? t("episode.line.directionRef") : t("episode.line.directionDesc")} onChange={(e) => setDirection(e.target.value)} />
           {focused && (
             <div className="vstack" style={{ gap: 8, marginTop: 10 }}>
               <div className="hstack" style={{ flexWrap: "wrap" }}>
-                <span className="hint">声音事件</span>
+                <span className="hint">{t("episode.line.vocalEvents")}</span>
                 <EventChips target={ta} value={text} onChange={setText} lang={zh ? "zh" : "en"} />
               </div>
               <div className="hstack" style={{ flexWrap: "wrap" }}>
-                <span className="hint">指导</span>
+                <span className="hint">{t("episode.line.direction")}</span>
                 <div className="chips">
-                  {(zh ? DIRECTION_PRESETS_ZH : DIRECTION_PRESETS_EN).map((d) => (
+                  {DIRECTION_PRESETS[zh ? "zh" : "en"].map((d) => (
                     <button key={d} className={`chip ${direction === d ? "on" : ""}`} onMouseDown={(e) => e.preventDefault()} onClick={() => setDirection(direction === d ? "" : d)}>{d}</button>
                   ))}
                 </div>
@@ -336,7 +341,7 @@ function LineCard({ ep, line, index, speakers, voice, busy, playing, onPatch, on
           {line.audio && !line.stale && (
             <PlayButton track={{ key: `line-${line.id}-${line.audio.path}`, url: line.audio.url, title: line.speaker, subtitle: line.text, color: voice?.color }} />
           )}
-          <button className="btn icon plain" title={line.audio ? "换一条（新的随机演绎）" : "生成这一句"} disabled={busy || !voice || !text.trim()} onClick={() => { commit(); void onRetake(seedLocked ? { seed: line.params?.seed } : undefined); }}>
+          <button className="btn icon plain" title={line.audio ? t("episode.line.retake") : t("episode.line.renderLine")} disabled={busy || !voice || !text.trim()} onClick={() => { commit(); void onRetake(seedLocked ? { seed: line.params?.seed } : undefined); }}>
             {busy ? <Spinner /> : <RefreshCw size={14} />}
           </button>
           <div style={{ position: "relative" }}>
@@ -345,14 +350,14 @@ function LineCard({ ep, line, index, speakers, voice, busy, playing, onPatch, on
               <div className="card" style={{ position: "absolute", right: 0, top: 32, zIndex: 10, padding: 5, width: 190, boxShadow: "var(--shadow-float)" }}>
                 {line.audio && (
                   <MenuItem icon={seedLocked ? <Unlock size={13} /> : <Lock size={13} />} onClick={() => onPatch({ params: seedLocked ? { ...line.params, seed: undefined } : { ...(line.params ?? {}), seed: line.audio?.seed } })}>
-                    {seedLocked ? "解锁这一条" : "锁定当前这一条"}
+                    {seedLocked ? t("episode.line.unlock") : t("episode.line.lock")}
                   </MenuItem>
                 )}
-                <MenuItem icon={<Plus size={13} />} onClick={onInsert}>在下方插入一句</MenuItem>
-                <MenuItem icon={<ArrowUp size={13} />} onClick={() => onPatch({ move_to: Math.max(0, index - 1) })}>上移</MenuItem>
-                <MenuItem icon={<ArrowDown size={13} />} onClick={() => onPatch({ move_to: index + 1 })}>下移</MenuItem>
-                <MenuItem icon={<FileText size={13} />} onClick={() => navigator.clipboard.writeText(`${line.speaker}: ${line.text}`)}>复制台词</MenuItem>
-                <MenuItem icon={<Trash2 size={13} />} danger onClick={onDelete}>删除</MenuItem>
+                <MenuItem icon={<Plus size={13} />} onClick={onInsert}>{t("episode.line.insertBelow")}</MenuItem>
+                <MenuItem icon={<ArrowUp size={13} />} onClick={() => onPatch({ move_to: Math.max(0, index - 1) })}>{t("episode.line.moveUp")}</MenuItem>
+                <MenuItem icon={<ArrowDown size={13} />} onClick={() => onPatch({ move_to: index + 1 })}>{t("episode.line.moveDown")}</MenuItem>
+                <MenuItem icon={<FileText size={13} />} onClick={() => navigator.clipboard.writeText(`${line.speaker}: ${line.text}`)}>{t("episode.line.copyLine")}</MenuItem>
+                <MenuItem icon={<Trash2 size={13} />} danger onClick={onDelete}>{t("common.delete")}</MenuItem>
               </div>
             )}
           </div>
@@ -360,12 +365,12 @@ function LineCard({ ep, line, index, speakers, voice, busy, playing, onPatch, on
       </div>
       {index < ep.lines.length - 1 && (
         <div className="pause-pill">
-          停顿
+          {t("episode.line.pause")}
           <input defaultValue={(line.pause_ms / 1000).toFixed(1)} key={line.pause_ms} onBlur={(e) => {
             const s = Number(e.target.value);
             if (Number.isFinite(s) && Math.round(s * 1000) !== line.pause_ms) void onPatch({ pause_ms: Math.max(0, Math.round(s * 1000)) });
           }} />
-          秒
+          {t("episode.line.seconds")}
         </div>
       )}
     </>

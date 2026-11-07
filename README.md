@@ -13,7 +13,7 @@ Write a multi-speaker script and produce a full podcast episode with [BreezeTTS 
 ![platform](https://img.shields.io/badge/platform-macOS%2014%2B%20%7C%20Windows%2010%2B-black)
 ![backend](https://img.shields.io/badge/backend-Metal%20%7C%20Vulkan%20%7C%20CPU-0a84ff)
 ![tauri](https://img.shields.io/badge/Tauri-2-24c8db?logo=tauri)
-![version](https://img.shields.io/badge/version-0.1.0-blue)
+![version](https://img.shields.io/badge/version-0.1.2-blue)
 ![license](https://img.shields.io/badge/code-Apache--2.0-green)
 ![model license](https://img.shields.io/badge/model-non--commercial-orange)
 
@@ -41,7 +41,7 @@ It is aimed at creators and developers who make Chinese/English podcasts, audio 
 </p>
 <p align="center"><sub>Left: the library, for managing shows and episodes　·　Right: the episode editor, for editing each line's text, speaker and direction</sub></p>
 
-> The app UI is currently in Simplified Chinese.
+> The app UI is available in Simplified Chinese and English. Switch language at any time with the selector at the bottom of the sidebar; the choice is remembered, and the first launch follows your system language. See [docs/i18n.md](docs/i18n.md) for how to add a language.
 
 ## ✨ Features
 

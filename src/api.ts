@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import i18n from "./i18n";
 
 export type Params = {
   guidance_scale?: number;
@@ -73,6 +74,9 @@ export type Job = {
   status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
   progress: number;
   message: string;
+  /** i18n key under `job.*` (+ interpolation args) for localising `message`. */
+  message_key?: string | null;
+  message_args?: Record<string, unknown> | null;
   error: string | null;
   result: Record<string, unknown> | null;
   created_at: string;
@@ -147,7 +151,14 @@ export async function initApi(): Promise<void> {
     }
     await sleep(150);
   }
-  throw new Error("BreezeCast API 未能启动");
+  throw new Error(i18n.t("app.apiUnavailable"));
+}
+
+/** Localised job status line; falls back to the backend's own text for unknown/neutral messages. */
+export function jobMessage(job: Job): string {
+  if (!job.message_key) return job.message;
+  // Keys come from the backend at runtime, so they cannot be statically checked.
+  return i18n.t(job.message_key as "job.done", { ...job.message_args, defaultValue: job.message });
 }
 
 export const apiBase = () => base;

@@ -13,7 +13,7 @@
 ![platform](https://img.shields.io/badge/platform-macOS%2014%2B%20%7C%20Windows%2010%2B-black)
 ![backend](https://img.shields.io/badge/backend-Metal%20%7C%20Vulkan%20%7C%20CPU-0a84ff)
 ![tauri](https://img.shields.io/badge/Tauri-2-24c8db?logo=tauri)
-![version](https://img.shields.io/badge/version-0.1.0-blue)
+![version](https://img.shields.io/badge/version-0.1.2-blue)
 ![license](https://img.shields.io/badge/code-Apache--2.0-green)
 ![model license](https://img.shields.io/badge/model-non--commercial-orange)
 
@@ -40,6 +40,8 @@ BreezeCast 是一个 macOS / Windows 桌面应用，把开源语音模型 Breeze
   <img src="docs/screenshots/episode-editor.png" width="49%" alt="单集编辑器" />
 </p>
 <p align="center"><sub>左：节目库，管理节目和单集　·　右：单集编辑器，逐句编辑台词、角色和演绎指导</sub></p>
+
+> 应用界面支持简体中文和 English，可随时通过侧边栏底部的语言选择器切换；选择会被记住，首次启动时跟随系统语言。新增语言的方法见 [docs/i18n.md](docs/i18n.md)。
 
 ## ✨ 功能
 

@@ -32,7 +32,7 @@ pub async fn download(State(state): State<Shared>, Path(id): Path<String>) -> Ap
     if let Some(job) = state.active_job_for(&id) {
         return ok(job);
     }
-    let job = state.create_job("model_download", &id, &format!("下载 {}", pkg.precision));
+    let job = state.create_job("model_download", &id, "job.download_queued", json!({"precision": pkg.precision}), &format!("下载 {}", pkg.precision));
     let st = state.clone();
     let job_id = job.id.clone();
     tokio::spawn(async move {
@@ -45,7 +45,7 @@ pub async fn download(State(state): State<Shared>, Path(id): Path<String>) -> Ap
             st2.downloads.lock().insert(pkg.id.to_string(), DownloadProgress { bytes, total, progress, job_id: jid.clone() });
             st2.update_job(&jid, |j| {
                 j.progress = progress;
-                j.message = format!("{:.1} / {:.1} GB", bytes as f64 / 1e9, total as f64 / 1e9);
+                j.set_text(format!("{:.1} / {:.1} GB", bytes as f64 / 1e9, total as f64 / 1e9));
             });
         })
         .await;
@@ -55,7 +55,7 @@ pub async fn download(State(state): State<Shared>, Path(id): Path<String>) -> Ap
                 st.update_job(&job_id, |j| {
                     j.status = "succeeded".into();
                     j.progress = 1.0;
-                    j.message = "已安装".into();
+                    j.set_message("job.installed", json!({}), "已安装");
                 });
                 if st.engine.status().state == "no_model" {
                     let mut s = st.settings();

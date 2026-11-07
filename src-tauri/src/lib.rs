@@ -25,11 +25,12 @@ fn api_info() -> serde_json::Value {
     }
 }
 
-const SKILL_DIRS: [(&str, &str); 4] = [
-    ("Claude Code", ".claude/skills"),
-    ("Codex", ".codex/skills"),
-    ("oh-my-pi", ".omp/agent/skills"),
-    ("通用 Agents", ".agents/skills"),
+// (id, display name, path relative to $HOME). `id` is stable so the UI can localise the name.
+const SKILL_DIRS: [(&str, &str, &str); 4] = [
+    ("claude-code", "Claude Code", ".claude/skills"),
+    ("codex", "Codex", ".codex/skills"),
+    ("omp", "oh-my-pi", ".omp/agent/skills"),
+    ("generic", "通用 Agents", ".agents/skills"),
 ];
 
 fn home() -> std::path::PathBuf {
@@ -41,11 +42,11 @@ fn skill_targets() -> serde_json::Value {
     let h = home();
     SKILL_DIRS
         .iter()
-        .map(|(name, rel)| {
+        .map(|(id, name, rel)| {
             let dir = h.join(rel);
             let agent_root = dir.parent().map(|p| p.exists()).unwrap_or(false);
             json!({
-                "name": name, "dir": dir, "available": agent_root,
+                "id": id, "name": name, "dir": dir, "available": agent_root,
                 "installed": dir.join("breezecast").join("SKILL.md").exists(),
             })
         })
