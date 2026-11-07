@@ -27,6 +27,22 @@ if [ "$(git rev-parse HEAD)" != "$(git rev-parse "$TAG^{commit}" 2>/dev/null)" ]
   echo "warning: working tree differs from $TAG; the uploaded dmg will not match the tagged source" >&2
 fi
 
+# Sign with the Developer ID certificate in the login keychain; tauri build signs when
+# APPLE_SIGNING_IDENTITY is set, and notarizes when APPLE_ID/APPLE_PASSWORD/APPLE_TEAM_ID or
+# APPLE_API_KEY/APPLE_API_ISSUER/APPLE_API_KEY_PATH are set.
+if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
+  APPLE_SIGNING_IDENTITY="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | head -n 1)"
+fi
+if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+  echo "no Developer ID Application certificate in the keychain; set APPLE_SIGNING_IDENTITY" >&2
+  exit 1
+fi
+export APPLE_SIGNING_IDENTITY
+echo "signing with: $APPLE_SIGNING_IDENTITY"
+if [ -z "${APPLE_ID:-}${APPLE_API_KEY:-}" ]; then
+  echo "warning: no notarization credentials; Gatekeeper will still block the downloaded dmg" >&2
+fi
+
 if [ "$SKIP_BUILD" = 0 ]; then
   TRIPLE="$(rustc -vV | sed -n 's/^host: //p')"
   [ -x "src-tauri/binaries/audiocpp_server-$TRIPLE" ] || scripts/build-engine.sh
@@ -39,6 +55,15 @@ if [ ${#DMGS[@]} -eq 0 ]; then
   echo "no dmg for $VERSION under src-tauri/target/release/bundle/dmg/" >&2
   exit 1
 fi
+
+APP=src-tauri/target/release/bundle/macos/BreezeCast.app
+codesign --verify --deep --strict "$APP"
+for f in "$APP" "${DMGS[@]}"; do
+  if ! grep -qF "Authority=$APPLE_SIGNING_IDENTITY" <<<"$(codesign -dvv "$f" 2>&1)"; then
+    echo "$f is not signed by $APPLE_SIGNING_IDENTITY" >&2
+    exit 1
+  fi
+done
 
 if ! gh release view "$TAG" >/dev/null 2>&1; then
   gh release create "$TAG" --draft --verify-tag --title "BreezeCast $TAG" --generate-notes \
